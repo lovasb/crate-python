@@ -59,7 +59,10 @@ setup(
         test=['lovely.testlayers',
               'mock',
               'zope.testing'],
-        sqlalchemy=['sqlalchemy']
+        sqlalchemy=['sqlalchemy',
+                    'lovely.testlayers',
+                    'mock',
+                    'nose']
     ),
     install_requires=requirements,
     package_data={'': ['*.txt']},

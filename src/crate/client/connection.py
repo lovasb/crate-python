@@ -1,5 +1,5 @@
 from .cursor import Cursor
-from .exceptions import ProgrammingError
+from .exceptions import ProgrammingError, NotSupportedError
 from .http import Client
 from .blob import BlobContainer
 
@@ -43,6 +43,9 @@ class Connection(object):
         :returns: a :class:ContainerObject
         """
         return BlobContainer(container_name, self)
+
+    def rollback(self):
+        raise NotSupportedError('Transactions are not supported')
 
     def __repr__(self):
         return '<Connection {0}>'.format(repr(self.client))

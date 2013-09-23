@@ -15,7 +15,7 @@ from . import http
 from .crash import CrateCmd
 from .test_cursor import CursorTest
 from .test_http import HttpClientTest
-from .sqlalchemy.test import SqlAlchemyTest
+from .sqlalchemy.test import sqlalchemy_suite
 from .compat import cprint
 
 
@@ -131,7 +131,8 @@ def test_suite():
     suite.addTest(s)
     suite.addTest(unittest.makeSuite(CursorTest))
     suite.addTest(unittest.makeSuite(HttpClientTest))
-    suite.addTest(unittest.makeSuite(SqlAlchemyTest))
+    for test in sqlalchemy_suite:
+        suite.addTest(test)
     suite.addTest(doctest.DocTestSuite('crate.client.connection'))
 
     s = doctest.DocFileSuite(

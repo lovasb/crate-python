@@ -1,11 +1,11 @@
 
 from __future__ import absolute_import
-from unittest import TestCase
+from unittest import TestCase, makeSuite
 
 from sqlalchemy import create_engine
 
 
-class SqlAlchemyTest(TestCase):
+class ConnectionTest(TestCase):
 
     def setUp(self):
         self.engine = create_engine('crate://')
@@ -34,3 +34,8 @@ class SqlAlchemyTest(TestCase):
         self.assertEquals(
             "<Connection <Client ['localhost:9201', 'localhost:9202']>>",
             repr(conn.connection))
+
+
+sqlalchemy_suite = [
+    makeSuite(ConnectionTest),
+]
