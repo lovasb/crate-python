@@ -94,6 +94,21 @@ class SqlAlchemyDateAndDateTimeTest(TestCase):
         self.assertRaises(DBAPIError, self.session.commit)
 
 
+class CreateTableTest(TestCase):
+
+    def setUp(self):
+        self.engine = sa.create_engine('crate://')
+        self.Base = declarative_base(bind=self.engine)
+
+        class Character(self.Base):
+            __tablename__ = 'characters'
+            name = sa.Column(sa.String, primary_key=True)
+            date = sa.Column(sa.Date)
+
+    def test_create_table_from_engine(self):
+        self.Base.metadata.create_all()
+
+
 class SqlAlchemyDictTypeTest(TestCase):
 
     def setUp(self):
@@ -378,3 +393,4 @@ tests = TestSuite()
 tests.addTest(makeSuite(SqlAlchemyConnectionTest))
 tests.addTest(makeSuite(SqlAlchemyDictTypeTest))
 tests.addTest(makeSuite(SqlAlchemyDateAndDateTimeTest))
+tests.addTest(makeSuite(CreateTableTest))

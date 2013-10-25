@@ -4,6 +4,12 @@ SQLAlchemy Dialect
 
     >>> connection = engine.connect()
 
+    >>> Base.metadata.create_all(bind=engine)
+
+    >>> sql = "select * from information_schema.columns where table_name = 'test'"
+    >>> result = connection.execute(sql)
+    >>> print('\n'.join([str(r) for r in result]))
+
 Using the connection to execute a select statement::
 
     >>> result = connection.execute('select name from locations')

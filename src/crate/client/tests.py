@@ -129,6 +129,15 @@ def setUpCrateLayerAndSqlAlchemy(test):
         nullable_date = sa.Column(sa.Date)
         flag = sa.Column(sa.Boolean)
 
+    class Foo(Base):
+        __tablename__ = 'test'
+        string_col = sa.Column(sa.String, primary_key=True)
+        int_col = sa.Column(sa.Integer)
+        biginteger_col = sa.Column(sa.BigInteger)
+        smallinteger_col = sa.Column(sa.SmallInteger)
+        float_col = sa.Column(sa.Float)
+        datetime_col = sa.Column(sa.DateTime)
+
     Session = sessionmaker(engine)
     session = Session()
     test.globs['sa'] = sa

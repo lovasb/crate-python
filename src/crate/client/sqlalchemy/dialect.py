@@ -4,9 +4,10 @@ import logging
 from datetime import datetime, date
 
 from sqlalchemy.engine import default
-from sqlalchemy import types as sqltypes
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy import types as sqltypes, sql, schema
 
-from .compiler import CrateCompiler
+from .compiler import CrateDDLCompiler, CrateCompiler
 from crate.client.exceptions import TimezoneUnawareException
 
 
@@ -89,10 +90,44 @@ colspecs = {
 }
 
 
+@compiles(sqltypes.String)
+def compile_varchar(element, compiler, **kw):
+    return 'string'
+
+
+@compiles(sqltypes.Integer)
+def compile_integer(element, compiler, **kw):
+    return 'integer'
+
+
+@compiles(sqltypes.BigInteger)
+def compile_biginteger(element, compiler, **kw):
+    return 'long'
+
+
+@compiles(sqltypes.SmallInteger)
+def compile_smallinteger(element, compiler, **kw):
+    return 'short'
+
+
+@compiles(sqltypes.Float)
+def compile_float(element, compiler, **kw):
+    return 'float'
+
+
+@compiles(sqltypes.DateTime)
+def compile_datetime(element, compiler, **kw):
+    return 'timestamp'
+
+
 class CrateDialect(default.DefaultDialect):
     name = 'crate'
     statement_compiler = CrateCompiler
+<<<<<<< HEAD
     supports_native_boolean = True
+=======
+    ddl_compiler = CrateDDLCompiler
+>>>>>>> 6815099... wip create tables with sql
     colspecs = colspecs
 
     def __init__(self, *args, **kwargs):
@@ -113,6 +148,18 @@ class CrateDialect(default.DefaultDialect):
         # implementing this as noop seems to cause sqlalchemy to propagate the
         # original exception to the user
         pass
+
+    def has_table(self, connection, table_name, schema=None):
+        stmt = ('select table_name from information_schema.tables '
+                'where table_name = :table_name')
+        cursor = connection.execute(
+            sql.text(
+                stmt,
+                bindparams=[sql.bindparam('table_name', unicode(table_name),
+                                          type_=sqltypes.Unicode)]
+            )
+        )
+        return bool(cursor.first())
 
     def connect(self, host=None, port=None, *args, **kwargs):
         server = None

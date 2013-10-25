@@ -1,7 +1,7 @@
 
 
 import sqlalchemy as sa
-from sqlalchemy.sql.compiler import SQLCompiler
+from sqlalchemy.sql.compiler import SQLCompiler, DDLCompiler
 from .types import MutableDict
 
 
@@ -51,6 +51,37 @@ def crate_before_execute(conn, clauseelement, multiparams, params):
     if isinstance(clauseelement, sa.sql.expression.Update):
         return rewrite_update(clauseelement, multiparams, params)
     return clauseelement, multiparams, params
+
+
+class CrateDDLCompiler(DDLCompiler):
+    def visit_create_table(self, create):
+        table = create.element
+        preparer = self.dialect.identifier_preparer
+
+        text = "\n" + " ".join(['CREATE'] + \
+                                    table._prefixes + \
+                                    ['TABLE',
+                                     preparer.format_table(table),
+                                     "("])
+        separator = "\n"
+
+        # if only one primary key, specify it along with the column
+        first_pk = False
+        for create_column in create.columns:
+            column = create_column.element
+            text += separator
+            separator = ", \n"
+            text += "\t" + self.process(create_column,
+                                first_pk=column.primary_key
+                                and not first_pk)
+            if column.primary_key:
+                first_pk = True
+        const = self.create_table_constraints(table)
+        if const:
+            text += ", \n\t" + const
+
+        text += "\n)%s\n\n" % self.post_create_table(table)
+        return text
 
 
 class CrateCompiler(SQLCompiler):
