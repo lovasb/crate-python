@@ -24,9 +24,10 @@ import logging
 from datetime import datetime, date
 
 from sqlalchemy.engine import default
-from sqlalchemy import types as sqltypes
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy import types as sqltypes, sql
 
-from .compiler import CrateCompiler
+from .compiler import CrateCompiler, CrateDDLCompiler
 from crate.client.exceptions import TimezoneUnawareException
 
 
@@ -108,9 +109,35 @@ colspecs = {
 }
 
 
+@compiles(sqltypes.String)
+def compile_varchar(element, compiler, **kw):
+    return 'string'
+
+
+@compiles(sqltypes.Unicode)
+def compile_unicode(element, compiler, **kw):
+    return 'string'
+
+
+@compiles(sqltypes.SmallInteger)
+def compile_smallint(element, compiler, **kw):
+    return 'short'
+
+
+@compiles(sqltypes.BigInteger)
+def compile_bigint(element, compiler, **kw):
+    return 'long'
+
+
+@compiles(sqltypes.DateTime)
+def compile_datetime(element, compiler, **kw):
+    return 'timestamp'
+
+
 class CrateDialect(default.DefaultDialect):
     name = 'crate'
     statement_compiler = CrateCompiler
+    ddl_compiler = CrateDDLCompiler
     supports_native_boolean = True
     colspecs = colspecs
 
@@ -142,6 +169,17 @@ class CrateDialect(default.DefaultDialect):
         if server:
             return self.dbapi.connect(servers=server, **kwargs)
         return self.dbapi.connect(**kwargs)
+
+    def has_table(self, connection, table_name, schema=None):
+        stmt = ('select table_name from information_schema.tables '
+                'where table_name = :table_name and schema_name = :schema_name')
+        schema = schema and str(schema) or 'doc'
+        params = [
+            sql.bindparam('table_name', str(table_name), type_=sqltypes.Unicode),
+            sql.bindparam('schema_name', schema, type_=sqltypes.Unicode)
+        ]
+        cursor = connection.execute(sql.text(stmt, bindparams=params))
+        return bool(cursor.first())
 
     @classmethod
     def dbapi(cls):

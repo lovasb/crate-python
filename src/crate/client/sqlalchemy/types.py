@@ -19,6 +19,7 @@
 # with Crate these terms will supersede the license and you may use the
 # software solely pursuant to the terms of the relevant commercial agreement.
 
+import sqlalchemy as sa
 import sqlalchemy.types as sqltypes
 from sqlalchemy.sql import operators, expression
 from sqlalchemy.ext.mutable import Mutable
@@ -107,6 +108,25 @@ class _Craty(sqltypes.UserDefinedType):
 
         def __getitem__(self, key):
             return self._binary_operate(self.expr, operators.getitem, key)
+
+
+    def get_col_spec(self):
+        attributes = []
+        for a in dir(self):
+            if a.startswith('_'):
+                continue
+            try:
+                attributes.append((a, getattr(self, a)))
+            except NotImplementedError:
+                pass
+        columns = (c for c in attributes if isinstance(c[1], sa.Column))
+        columns = ('{0} {1}'.format(c[0], c[1].type.compile()) for c in columns)
+        columns = list(columns)
+        if columns:
+            columns = ', '.join(columns)
+            return 'object as ({0})'.format(columns)
+        return 'object'
+
 
     type = MutableDict
     comparator_factory = Comparator

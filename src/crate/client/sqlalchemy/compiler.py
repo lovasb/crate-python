@@ -26,7 +26,7 @@ try:
 except ImportError:
     # SQLAlchemy 0.9
     from sqlalchemy.sql.elements import _is_literal as sa_is_literal
-from sqlalchemy.sql.compiler import SQLCompiler
+from sqlalchemy.sql.compiler import SQLCompiler, DDLCompiler
 from sqlalchemy.sql import compiler
 from .types import MutableDict
 
@@ -70,6 +70,20 @@ def rewrite_update(clauseelement, multiparams, params):
     # use CrateCompiler specific visit_update
     clauseelement._crate_specific = True
     return clauseelement, multiparams, params
+
+
+class CrateDDLCompiler(DDLCompiler):
+
+    def get_column_specification(self, column, **kwargs):
+        colspec = self.preparer.format_column(column) + " " + \
+            self.dialect.type_compiler.process(column.type)
+        #default = self.get_column_default_string(column)
+        #if default is not None:
+        #    colspec += " DEFAULT " + default
+
+        #if not column.nullable:
+        #    colspec += " NOT NULL"
+        return colspec
 
 
 @sa.event.listens_for(sa.engine.Engine, "before_execute", retval=True)
