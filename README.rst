@@ -1,30 +1,47 @@
-.. image:: https://cdn.crate.io/web/1.0.0/img/logo-solid.png
-   :width: 155px
-   :height: 45px
-   :alt: Crate
+.. image:: https://cdn.crate.io/web/2.0/img/crate-logo_330x72.png
+   :height: 36px
+   :width: 165px
+   :alt: Crate.IO
    :target: https://crate.io
 
-.. image:: https://travis-ci.org/crate/crate-python.svg?branch=master
-        :target: https://travis-ci.org/crate/crate-python
-        :alt: Test
+|
 
-.. image:: https://badge.fury.io/py/crate.png
-    :target: http://badge.fury.io/py/crate
-    :alt: Version
+.. image:: https://img.shields.io/travis/crate/crate-python.svg
+   :target: https://travis-ci.org/crate/crate-python
+   :alt: TravisCI
 
-.. image:: https://pypip.in/download/crate/badge.png
+.. image:: https://img.shields.io/pypi/v/crate.svg
+   :target: https://pypi.python.org/pypi/crate/
+   :alt: PyPI Version
+
+.. image:: https://img.shields.io/pypi/pyversions/crate.svg
+   :target: https://pypi.python.org/pypi/crate/
+   :alt: Python Version
+
+.. image:: https://img.shields.io/pypi/dw/crate.svg
     :target: https://pypi.python.org/pypi/crate/
-    :alt: Downloads
+    :alt: PyPI Downloads
+
+.. image:: https://img.shields.io/pypi/wheel/crate.svg
+    :target: https://pypi.python.org/pypi/crate/
+    :alt: Wheel
+
+.. image:: https://img.shields.io/coveralls/crate/crate-python.svg
+    :target: https://coveralls.io/r/crate/crate-python?branch=master
+    :alt: Coverage
+
 
 ========
 Overview
 ========
 
-This is the database adapter for the crate database. Its main feature is a
+This is the database adapter for the Crate database. Its main feature is a
 implementation of the Python `DB API 2.0
-<http://www.python.org/dev/peps/pep-0249/>`_ specification. 
+<http://www.python.org/dev/peps/pep-0249/>`_ specification.
 
 It also includes support for `SQLAlchemy <http://www.sqlalchemy.org>`_.
+
+To get started take a look at the `documentation <https://crate.io/docs/projects/crate-python/stable/>`_.
 
 Installation
 ============
@@ -41,24 +58,12 @@ To update use::
 
     $ pip install -U crate
 
-Installing via easy_install
----------------------------
-
-If you prefer easy_install which is provided by
-`setuptools <https://pypi.python.org/pypi/setuptools/1.1>`_
-use the following command::
-
-    $ easy_install crate
-
-To update use::
-
-    $ easy_install -U crate
 
 Are you a Developer?
 ====================
 
-You can build Crate Python Client on your own with the latest version hosted 
-on GitHub.
+You can build Crate Python Client on your own with the latest version hosted on
+GitHub.
 To do so, please refer to ``DEVELOP.rst`` for further information.
 
 Help & Contact

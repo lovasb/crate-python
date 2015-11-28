@@ -19,6 +19,7 @@
 # with Crate these terms will supersede the license and you may use the
 # software solely pursuant to the terms of the relevant commercial agreement.
 
+
 import heapq
 import json
 import logging
@@ -31,10 +32,7 @@ import urllib3.exceptions
 from time import time
 import threading
 import re
-try:
-    from urllib.parse import urlparse
-except ImportError:     # Python 2
-    from urlparse import urlparse
+from six.moves.urllib.parse import urlparse, urlencode
 from crate.client.exceptions import (
     ConnectionError,
     DigestNotFoundException,
@@ -49,6 +47,7 @@ if sys.version_info[0] > 2:
     basestring = str
 
 _HTTP_PAT = pat = re.compile('https?://.+', re.I)
+SRV_UNAVAILABLE_STATUSES = set((502, 503, 504, 509))
 
 
 def super_len(o):
@@ -90,6 +89,9 @@ class Server(object):
             length = super_len(data)
             if length is not None:
                 headers['Content-Length'] = length
+        headers['Accept'] = 'application/json'
+        kwargs['assert_same_host'] = False
+        kwargs['redirect'] = False
         return self.pool.urlopen(
             method,
             path,
@@ -105,7 +107,7 @@ class Client(object):
     Crate connection client using crate's HTTP API.
     """
 
-    sql_path = '_sql'
+    SQL_PATH = '_sql'
     """Crate URI path for issuing SQL statements."""
 
     retry_interval = 30
@@ -115,7 +117,7 @@ class Client(object):
     """Default server to use if no servers are given on instantiation."""
 
     def __init__(self, servers=None, timeout=None, ca_cert=None,
-                 verify_ssl_cert=False):
+                 verify_ssl_cert=False, error_trace=False):
         if not servers:
             servers = [self.default_server]
         else:
@@ -124,7 +126,6 @@ class Client(object):
             servers = [self._server_url(s) for s in servers]
         self._active_servers = servers
         self._inactive_servers = []
-
         self._http_timeout = timeout
         pool_kw = {}
         if ca_cert is None:
@@ -137,13 +138,37 @@ class Client(object):
                                  timeout=timeout,
                                  **pool_kw
                                 )
+        self._pool_kw = pool_kw
         self._lock = threading.RLock()
         self._local = threading.local()
+
+        url_params = {}
+        if error_trace:
+            url_params["error_trace"] = 1
+        self.path = self._get_sql_path(**url_params)
+
+    def _get_sql_path(self, **url_params):
+        """
+        create the HTTP path to send SQL Requests to
+        """
+        if url_params:
+            return "{0}?{1}".format(self.SQL_PATH, urlencode(url_params))
+        else:
+            return self.SQL_PATH
 
     def _update_server_pool(self, servers, **kwargs):
         for server in servers:
             if not server in self.server_pool:
-                self.server_pool[server] = Server(server, **kwargs)
+                https = server.lower().startswith('https:')
+                if not https:
+                    kwargs_copy = {}
+                    #clean up any kwargs which are invalid for HTTPConnectionPool
+                    for key in kwargs:
+                        if key not in ['ca_certs', 'cert_reqs']:
+                            kwargs_copy[key] = kwargs[key]
+                    self.server_pool[server] = Server(server, **kwargs_copy)
+                else:
+                    self.server_pool[server] = Server(server, **kwargs)
 
     @staticmethod
     def _server_url(server):
@@ -167,7 +192,7 @@ class Client(object):
         url = '%s://%s' % (parsed.scheme, parsed.netloc)
         return url
 
-    def sql(self, stmt, parameters=None):
+    def sql(self, stmt, parameters=None, bulk_parameters=None):
         """
         Execute SQL stmt against the crate server.
         """
@@ -182,9 +207,11 @@ class Client(object):
         }
         if parameters:
             data['args'] = parameters
+        if bulk_parameters:
+            data['bulk_args'] = bulk_parameters
         logger.debug(
-            'Sending request to %s with payload: %s', self.sql_path, data)
-        content = self._json_request('POST', self.sql_path, data=data)
+            'Sending request to %s with payload: %s', self.path, data)
+        content = self._json_request('POST', self.path, data=data)
         logger.debug("JSON response for stmt(%s): %s", stmt, content)
 
         return content
@@ -199,7 +226,7 @@ class Client(object):
                 "Invalid server response of content-type '%s'" %
                 response.headers.get("content-type", "unknown"))
         node_name = content.get("name")
-        return server, node_name
+        return server, node_name, content.get('version', {}).get('number', '0.0.0')
 
     def _blob_path(self, table, digest):
         return '_blobs/{table}/{digest}'.format(table=table, digest=digest)
@@ -253,6 +280,11 @@ class Client(object):
             return False
         self._raise_for_status(response)
 
+    def _add_server(self, server):
+        with self._lock:
+            if server not in self.server_pool:
+                self.server_pool[server] = Server(server, **self._pool_kw)
+
     def _request(self, method, path, server=None, **kwargs):
         """Execute a request to the cluster
 
@@ -261,25 +293,33 @@ class Client(object):
         while True:
             next_server = server or self._get_server()
             try:
-                return self._do_request(next_server, method, path, **kwargs)
+                response = self._do_request(next_server, method, path, **kwargs)
+                redirect_location = response.get_redirect_location()
+                if redirect_location and 300 <= response.status <= 308:
+                    redirect_server = self._server_url(redirect_location)
+                    self._add_server(redirect_server)
+                    return self._request(
+                        method, path, server=redirect_server, **kwargs)
+                if not server and response.status in SRV_UNAVAILABLE_STATUSES:
+                    with self._lock:
+                        # drop server from active ones
+                        self._drop_server(next_server, response.reason)
+                else:
+                    return response
             except (urllib3.exceptions.MaxRetryError,
                     urllib3.exceptions.ReadTimeoutError,
                     urllib3.exceptions.SSLError,
                     urllib3.exceptions.HTTPError,
                     urllib3.exceptions.ProxyError,
                    ) as ex:
-                # drop server from active ones
                 ex_message = hasattr(ex, 'message') and ex.message or str(ex)
                 if server:
                     raise ConnectionError(
                         "Server not available, exception: %s" % ex_message
                     )
-                self._drop_server(next_server, ex_message)
-                # if this is the last server raise exception, otherwise try next
-                if not self._active_servers:
-                    raise ConnectionError(
-                        ("No more Servers available, "
-                         "exception from last server: %s") % ex_message)
+                with self._lock:
+                    # drop server from active ones
+                    self._drop_server(next_server, ex_message)
             except Exception as e:
                 ex_message = hasattr(e, 'message') and e.message or str(e)
                 raise ProgrammingError(ex_message)
@@ -311,9 +351,14 @@ class Client(object):
                                 ).startswith("application/json"):
             data = json.loads(six.text_type(response.data, 'utf-8'))
             error = data.get('error', {})
+            error_trace = data.get('error_trace', None)
+            if "results" in data:
+                errors = [res["error_message"] for res in data["results"] if res.get("error_message")]
+                if errors:
+                    raise ProgrammingError("\n".join(errors))
             if isinstance(error, dict):
-                raise ProgrammingError(error.get('message', ''))
-            raise ProgrammingError(error)
+                raise ProgrammingError(error.get('message', ''), error_trace=error_trace)
+            raise ProgrammingError(error, error_trace=error_trace)
         raise ProgrammingError(http_error_msg)
 
     def _json_request(self, method, path, data=None):
@@ -377,15 +422,19 @@ class Client(object):
         """
         Drop server from active list and adds it to the inactive ones.
         """
-        with self._lock:
-            try:
-                self._active_servers.remove(server)
-            except ValueError:
-                pass
-            else:
-                heapq.heappush(self._inactive_servers, (time(), server,
-                                                        message))
-                logger.warning("Removed server %s from active pool", server)
+        try:
+            self._active_servers.remove(server)
+        except ValueError:
+            pass
+        else:
+            heapq.heappush(self._inactive_servers, (time(), server, message))
+            logger.warning("Removed server %s from active pool", server)
+
+        # if this is the last server raise exception, otherwise try next
+        if not self._active_servers:
+            raise ConnectionError(
+                ("No more Servers available, "
+                 "exception from last server: %s") % message)
 
     def _roundrobin(self):
         """

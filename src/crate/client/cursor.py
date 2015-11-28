@@ -20,6 +20,10 @@
 # software solely pursuant to the terms of the relevant commercial agreement.
 
 from .exceptions import ProgrammingError
+from distutils.version import StrictVersion
+import warnings
+
+BULK_INSERT_MIN_VERSION = StrictVersion("0.42.0")
 
 
 class Cursor(object):
@@ -34,8 +38,9 @@ class Cursor(object):
         self.connection = connection
         self._closed = False
         self._result = None
+        self.rows = None
 
-    def execute(self, sql, parameters=None):
+    def execute(self, sql, parameters=None, bulk_parameters=None):
         """
         Prepare and execute a database operation (query or command).
         """
@@ -45,7 +50,7 @@ class Cursor(object):
         if self._closed:
             raise ProgrammingError("Cursor closed")
 
-        self._result = self.connection.client.sql(sql, parameters)
+        self._result = self.connection.client.sql(sql, parameters, bulk_parameters)
         if "rows" in self._result:
             self.rows = iter(self._result["rows"])
 
@@ -56,18 +61,29 @@ class Cursor(object):
         """
         row_counts = []
         durations = []
-        for params in seq_of_parameters:
-            self.execute(sql, parameters=params)
-            if self.rowcount > -1:
-                row_counts.append(self.rowcount)
+        if self.connection.lowest_server_version >= BULK_INSERT_MIN_VERSION:
+            self.execute(sql, bulk_parameters=seq_of_parameters)
+            for result in self._result.get('results', []):
+                if result.get('rowcount') > -1:
+                    row_counts.append(result.get('rowcount'))
             if self.duration > -1:
                 durations.append(self.duration)
+        else:
+            for params in seq_of_parameters:
+                self.execute(sql, parameters=params)
+                if self.rowcount > -1:
+                    row_counts.append(self.rowcount)
+                if self.duration > -1:
+                    durations.append(self.duration)
         self._result = {
             "rowcount": sum(row_counts) if row_counts else -1,
             "duration": sum(durations) if durations else -1,
-            "rows": []
+            "rows": [],
+            "cols": self._result.get("cols", []),
+            "results": self._result.get("results")
         }
         self.rows = iter(self._result["rows"])
+        return self._result["results"]
 
     def fetchone(self):
         """
@@ -75,17 +91,20 @@ class Cursor(object):
         more data is available.
         Alias for ``next()``.
         """
-        return self.next()
-
-    def next(self):
-        """
-        Fetch the next row of a query result set, returning a single sequence, or None when no
-        more data is available.
-        """
         try:
-            return self._next()
+            return self.next()
         except StopIteration:
             return None
+
+    def __iter__(self):
+        """
+        support iterator interface: http://legacy.python.org/dev/peps/pep-0249/#iter
+
+        This iterator is shared. Advancing this iterator will advance other
+        iterators created from this cursor.
+        """
+        warnings.warn("DB-API extension cursor.__iter__() used")
+        return self
 
     def fetchmany(self, count=None):
         """
@@ -99,7 +118,7 @@ class Cursor(object):
         result = []
         for i in range(count):
             try:
-                result.append(self._next())
+                result.append(self.next())
             except StopIteration:
                 pass
         return result
@@ -114,7 +133,7 @@ class Cursor(object):
         iterate = True
         while iterate:
             try:
-                result.append(self._next())
+                result.append(self.next())
             except StopIteration:
                 iterate = False
         return result
@@ -151,16 +170,20 @@ class Cursor(object):
             or "rows" not in self._result
         ):
             return -1
-        return self._result.get("rowcount", len(self._result["rows"]))
+        return self._result.get("rowcount", -1)
 
-    def _next(self):
+    def next(self):
         """
         Return the next row of a query result set, respecting if cursor was closed.
         """
-        if not self._closed:
+        if self.rows is None:
+            raise ProgrammingError("No result available. execute() or executemany() must be called first.")
+        elif not self._closed:
             return next(self.rows)
         else:
             raise ProgrammingError("Cursor closed")
+
+    __next__ = next
 
     @property
     def description(self):

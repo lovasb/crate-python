@@ -40,24 +40,36 @@ from zope.testing.renormalizing import RENormalizing
 from crate.testing.layer import CrateLayer
 from crate.testing.tests import crate_path, docs_path
 from crate.client import connect
+from crate.client.sqlalchemy.dialect import CrateDialect
 
 from . import http
 from .test_cursor import CursorTest
-from .test_http import HttpClientTest, ThreadSafeHttpClientTest, KeepAliveClientTest
+from .test_connection import ConnectionTest
+from .test_http import HttpClientTest, ThreadSafeHttpClientTest, KeepAliveClientTest, ParamsTest
 from .sqlalchemy.tests import test_suite as sqlalchemy_test_suite
 from .sqlalchemy.types import ObjectArray
 from .compat import cprint
 
 
 class ClientMocked(object):
+
+    active_servers = ["http://localhost:4200"]
+
     def __init__(self):
         self.response = {}
+        self._server_infos = ("http://localhost:4200", "my server", "0.42.0")
 
-    def sql(self, stmt=None, parameters=None):
+    def sql(self, stmt=None, parameters=None, bulk_parameters=None):
         return self.response
+
+    def server_infos(self, server):
+        return self._server_infos
 
     def set_next_response(self, response):
         self.response = response
+
+    def set_next_server_infos(self, server, server_name, version):
+        self._server_infos = (server, server_name, version)
 
 
 def setUpMocked(test):
@@ -68,7 +80,6 @@ crate_port = 44209
 crate_transport_port = 44309
 crate_layer = CrateLayer('crate',
                          crate_home=crate_path(),
-                         crate_exec=crate_path('bin', 'crate'),
                          port=crate_port,
                          transport_port=crate_transport_port)
 
@@ -127,9 +138,12 @@ def setUpCrateLayerAndSqlAlchemy(test):
     cursor.execute("""create table characters (
       id string primary key,
       name string,
+      quote string,
       details object,
-      more_details array(object)
-)""")
+      more_details array(object),
+      INDEX name_ft using fulltext(name) with (analyzer = 'english'),
+      INDEX quote_ft using fulltext(quote) with (analyzer = 'english')
+) """)
     conn.close()
 
     engine = sa.create_engine('crate://{0}'.format(crate_host))
@@ -154,6 +168,7 @@ def setUpCrateLayerAndSqlAlchemy(test):
     test.globs['Base'] = Base
     test.globs['session'] = session
     test.globs['Session'] = Session
+    test.globs['CrateDialect'] = CrateDialect
 
 
 _server = None
@@ -262,6 +277,8 @@ def test_suite():
     suite.addTest(unittest.makeSuite(HttpClientTest))
     suite.addTest(unittest.makeSuite(KeepAliveClientTest))
     suite.addTest(unittest.makeSuite(ThreadSafeHttpClientTest))
+    suite.addTest(unittest.makeSuite(ParamsTest))
+    suite.addTest(unittest.makeSuite(ConnectionTest))
     suite.addTest(sqlalchemy_test_suite())
     suite.addTest(doctest.DocTestSuite('crate.client.connection'))
     suite.addTest(doctest.DocTestSuite('crate.client.http'))
@@ -277,6 +294,7 @@ def test_suite():
 
     s = doctest.DocFileSuite(
         'sqlalchemy/itests.txt',
+        'sqlalchemy/dialect.txt',
         checker=checker,
         setUp=setUpCrateLayerAndSqlAlchemy,
         tearDown=tearDownWithCrateLayer,

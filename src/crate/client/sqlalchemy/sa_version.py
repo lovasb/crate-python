@@ -19,27 +19,13 @@
 # with Crate these terms will supersede the license and you may use the
 # software solely pursuant to the terms of the relevant commercial agreement.
 
-from unittest import TestCase
-from mock import MagicMock
+import sqlalchemy as sa
+SA_VERSION = sa.__version__.split('.')
 
-from crate.client import connect
-from crate.client.http import Client
+def is_sa_version(major, minor):
+    return int(SA_VERSION[0]) == major and int(SA_VERSION[1]) == minor
 
+SA_0_8 = is_sa_version(0, 8)
+SA_0_9 = is_sa_version(0, 9)
+SA_1_0 = is_sa_version(1, 0)
 
-class CursorTest(TestCase):
-
-    def test_execute_with_args(self):
-        client = MagicMock(spec=Client)
-        conn = connect(client=client)
-        c = conn.cursor()
-        statement = 'select * from locations where position = ?'
-        c.execute(statement, 1)
-        client.sql.assert_called_once_with(statement, 1, None)
-
-    def test_execute_with_bulk_args(self):
-        client = MagicMock(spec=Client)
-        conn = connect(client=client)
-        c = conn.cursor()
-        statement = 'select * from locations where position = ?'
-        c.execute(statement, bulk_parameters=[[1]])
-        client.sql.assert_called_once_with(statement, None, [[1]])

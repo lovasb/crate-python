@@ -23,15 +23,15 @@ from __future__ import absolute_import
 import logging
 from datetime import datetime, date
 
-from sqlalchemy.engine import default
 from sqlalchemy import types as sqltypes
+from sqlalchemy.engine import default, reflection
 
-from .compiler import CrateCompiler
+from .compiler import CrateCompiler, CrateCompilerV1, CrateTypeCompiler, CrateDDLCompiler
 from crate.client.exceptions import TimezoneUnawareException
 
+from .sa_version import SA_1_0
 
 log = logging.getLogger(__name__)
-
 
 class Date(sqltypes.Date):
     def bind_processor(self, dialect):
@@ -110,21 +110,25 @@ colspecs = {
 
 class CrateDialect(default.DefaultDialect):
     name = 'crate'
-    statement_compiler = CrateCompiler
+    statement_compiler = SA_1_0 and CrateCompilerV1 or CrateCompiler
+    ddl_compiler = CrateDDLCompiler
+    type_compiler = CrateTypeCompiler
     supports_native_boolean = True
     colspecs = colspecs
 
     def __init__(self, *args, **kwargs):
         super(CrateDialect, self).__init__(*args, **kwargs)
-
         # currently our sql parser doesn't support unquoted column names that
         # start with _. Adding it here causes sqlalchemy to quote such columns
         self.identifier_preparer.illegal_initial_characters.add('_')
 
     def initialize(self, connection):
-        # the DefaultDialect issues some queries to test for unicode support in
-        # the resutls. etc. -> don't need any of that.
-        pass
+        # get lowest server version
+        self.server_version_info = \
+            self._get_server_version_info(connection)
+        # get default schema name
+        self.default_schema_name = \
+            self._get_default_schema_name(connection)
 
     def do_rollback(self, connection):
         # if any exception is raised by the dbapi, sqlalchemy by default
@@ -143,7 +147,38 @@ class CrateDialect(default.DefaultDialect):
             return self.dbapi.connect(servers=server, **kwargs)
         return self.dbapi.connect(**kwargs)
 
+    def _get_default_schema_name(self, connection):
+        return 'doc'
+
+    def _get_server_version_info(self, connection):
+        return tuple(connection.connection.lowest_server_version.version)
+
     @classmethod
     def dbapi(cls):
         from crate import client
         return client
+
+    def has_schema(self, connection, schema):
+        return schema in self.get_schema_names(connection)
+
+    def has_table(self, connection, table_name, schema=None):
+        return table_name in self.get_table_names(connection, schema=schema)
+
+    @reflection.cache
+    def get_schema_names(self, connection, **kw):
+        cursor = connection.execute(
+            "select schema_name "
+            "from information_schema.schemata "
+            "order by schema_name asc"
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+    @reflection.cache
+    def get_table_names(self, connection, schema=None, **kw):
+        cursor = connection.execute(
+            "select table_name from information_schema.tables "
+            "where schema_name = ? "
+            "order by table_name asc, schema_name asc",
+            [schema or self.default_schema_name]
+        )
+        return [row[0] for row in cursor.fetchall()]

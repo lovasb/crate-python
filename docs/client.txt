@@ -28,17 +28,65 @@ If no ``servers`` are given, the default one ``http://127.0.0.1:4200`` is used::
     >>> connection.client._active_servers
     ['http://127.0.0.1:4200']
 
+
+If the option ``error_trace`` is set to ``True``, the client will print a whole traceback
+if a server error occurs::
+
+    >>> connection = client.connect([crate_host], error_trace=True)
+
 It's possible to define a default timeout value in seconds for all servers
 using the optional parameter ``timeout``::
 
     >>> connection = client.connect([crate_host, invalid_host], timeout=5)
 
-Selecting Some Data
-===================
+Inserting Data
+==============
 
-To execute a command a cursor has to be opened to perform database operations::
+Before executing any statement a cursor has to be opened to perform
+database operations::
 
     >>> cursor = connection.cursor()
+    >>> cursor.execute("""INSERT INTO locations
+    ... (name, date, kind, position) VALUES (?, ?, ?, ?)""",
+    ...                ('Einstein Cross', '2007-03-11', 'Quasar', 7))
+
+To bulk insert data you can use the `executemany` function::
+
+    >>> cursor.executemany("""INSERT INTO locations
+    ... (name, date, kind, position) VALUES (?, ?, ?, ?)""",
+    ...                [('Cloverleaf', '2007-03-11', 'Quasar', 7),
+    ...                 ('Old Faithful', '2007-03-11', 'Quasar', 7)])
+    [{u'rowcount': 1}, {u'rowcount': 1}]
+
+`executemany` returns a list of results for every parameter. Each result
+contains a rowcount. If an error occures the rowcount is -2 and the result
+may contain an `error_message` depending on the error.
+
+.. note::
+
+    If you are using a crate server version older than 0.42.0 the client
+    will execute a single sql statement for every parameter in the parameter
+    sequence when you are using executemany. In this case, executemany doesn't
+    return any value. To avoid that overhead you can
+    use ``execute`` and make use of multiple rows in the INSERT
+    statement and provide a list of arguments with the length of
+    ``number of inserted records * number of columns``::
+    
+        >>> cursor.execute("""INSERT INTO locations
+        ... (name, date, kind, position) VALUES (?, ?, ?, ?), (?, ?, ?, ?)""",
+        ...                ('Creameries', '2007-03-11', 'Quasar', 7,
+        ...                 'Double Quasar', '2007-03-11', 'Quasar', 7))
+
+.. Hidden: refresh locations
+
+    >>> cursor.execute("REFRESH TABLE locations")
+
+Selecting Data
+==============
+
+To perform the select operation simply execute the statement on the
+open cursor::
+
     >>> cursor.execute("SELECT name FROM locations where name = ?", ('Algol',))
 
 To retrieve a row we can use one of the cursor's fetch functions (described below).
@@ -85,24 +133,28 @@ fetchall()
 ----------
 
 ``fetchall()`` returns a list of all remaining rows:: 
-    
+
     >>> cursor.execute("SELECT name FROM locations order by name")
     >>> result = cursor.fetchall()
     >>> pprint(result)
-    [[u'Aldebaran'],
-     [u'Algol'],
-     [u'Allosimanius Syneca'],
-     [u'Alpha Centauri'],
-     [u'Altair'],
-     [u'Argabuthon'],
-     [u'Arkintoofle Minor'],
-     [u'Bartledan'],
-     [u'Folfanga'],
-     [u'Galactic Sector QQ7 Active J Gamma'],
+    [['Aldebaran'],
+     ['Algol'],
+     ['Allosimanius Syneca'],
+     ['Alpha Centauri'],
+     ['Altair'],
+     ['Argabuthon'],
+     ['Arkintoofle Minor'],
+     ['Bartledan'],
+     ['Cloverleaf'],
+     ['Creameries'],
+     ['Double Quasar'],
+     ['Einstein Cross'],
+     ['Folfanga'],
+     ['Galactic Sector QQ7 Active J Gamma'],
      ['Galaxy'],
-     [u'North West Ripple'],
-     [u'Outer Eastern Rim']]
-
+     ['North West Ripple'],
+     ['Old Faithful'],
+     ['Outer Eastern Rim']]
 
 Cursor Description
 ==================
@@ -113,12 +165,15 @@ column name as first parameter. Just the name field is supported, all other fiel
     >>> cursor.execute("SELECT * FROM locations order by name")
     >>> result = cursor.fetchone()
     >>> pprint(result)
-    [u'2013-07-16',
+    [1373932800000,
      None,
      u'Max Quordlepleen claims that the only thing left ...',
      None,
+     None,
      u'Star System',
      u'Aldebaran',
+     None,
+     None,
      1]
 
     >>> result = cursor.description
@@ -127,8 +182,11 @@ column name as first parameter. Just the name field is supported, all other fiel
      (u'datetime', None, None, None, None, None, None),
      (u'description', None, None, None, None, None, None),
      (u'details', None, None, None, None, None, None),
+     (u'flag', None, None, None, None, None, None),
      (u'kind', None, None, None, None, None, None),
      (u'name', None, None, None, None, None, None),
+     (u'nullable_date', None, None, None, None, None, None),
+     (u'nullable_datetime', None, None, None, None, None, None),
      (u'position', None, None, None, None, None, None))
 
 Closing the Cursor

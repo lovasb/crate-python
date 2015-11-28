@@ -124,6 +124,15 @@ class SqlAlchemyDictTypeTest(TestCase):
         session = Session()
         return session, Character
 
+    def test_assign_null_to_object_array(self):
+        session, Character = self.set_up_character_and_cursor()
+        char_1 = Character(name='Trillian', data_list=None)
+        self.assertTrue(char_1.data_list is None)
+        char_2 = Character(name='Trillian', data_list=1)
+        self.assertTrue(char_2.data_list == [1])
+        char_3 = Character(name='Trillian', data_list=[None])
+        self.assertTrue(char_3.data_list == [None])
+
     @patch('crate.client.connection.Cursor', FakeCursor)
     def test_assign_to_craty_type_after_commit(self):
         session, Character = self.set_up_character_and_cursor(
@@ -136,7 +145,7 @@ class SqlAlchemyDictTypeTest(TestCase):
         self.assertTrue(char in session.dirty)
         session.commit()
         fake_cursor.execute.assert_called_with(
-            "UPDATE characters SET characters.data = ? WHERE characters.name = ?",
+            "UPDATE characters SET data = ? WHERE characters.name = ?",
             ({'x': 1}, 'Trillian',)
         )
 
@@ -220,7 +229,7 @@ class SqlAlchemyDictTypeTest(TestCase):
         char.age = 20
         session.commit()
         fake_cursor.execute.assert_called_with(
-            ("UPDATE characters SET characters.age = ?, data['x'] = ? "
+            ("UPDATE characters SET age = ?, data['x'] = ? "
              "WHERE characters.name = ?"),
             (20, 1, 'Trillian')
         )
@@ -353,7 +362,7 @@ class SqlAlchemyDictTypeTest(TestCase):
         self.assertTrue(char in session.dirty)
         session.commit()
         fake_cursor.execute.assert_called_with(
-            ("UPDATE characters SET characters.data_list = ? "
+            ("UPDATE characters SET data_list = ? "
              "WHERE characters.name = ?"),
             ([{'1': 1}, {'3': 3}], 'Trillian')
         )

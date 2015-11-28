@@ -51,6 +51,16 @@ A further call to ``fetchone()`` returns an empty result:
 
     >>> cursor.fetchone()
 
+Using ``fetchone()`` on a cursor before issuing a database statement results
+in an error::
+
+    >>> new_cursor = connection.cursor()
+    >>> new_cursor.fetchone()
+    Traceback (most recent call last):
+    ...
+    ProgrammingError: No result available. execute() or executemany() must be called first.
+
+
 fetchmany()
 ===========
 
@@ -111,6 +121,38 @@ And each other call returns an empty sequence::
     >>> cursor.fetchall()
     []
 
+iteration
+=========
+
+The cursor supports the iterator interface and can be iterated upon::
+
+    >>> cursor.execute('')
+    >>> [row for row in cursor]
+    [['North West Ripple', 1], ['Arkintoofle Minor', 3], ['Alpha Centauri', 3]]
+
+When no other call to execute has been done, it will raise StopIteration on
+subsequent iterations::
+
+    >>> next(cursor)
+    Traceback (most recent call last):
+    ...
+    StopIteration
+
+    >>> cursor.execute('')
+    >>> for row in cursor:
+    ...     row
+    ['North West Ripple', 1]
+    ['Arkintoofle Minor', 3]
+    ['Alpha Centauri', 3]
+
+Iterating over a new cursor without results will immediately raise a ProgrammingError::
+
+    >>> new_cursor = connection.cursor()
+    >>> next(new_cursor)
+    Traceback (most recent call last):
+    ...
+    ProgrammingError: No result available. execute() or executemany() must be called first.
+
 description
 ===========
 
@@ -132,6 +174,26 @@ The attribute is -1 in case close has been performed on the cursor::
     >>> cursor.rowcount
     -1
 
+If the last respsonse doesn't contain the rowcount attribute -1 is returned::
+
+    >>> cursor = connection.cursor()
+    >>> connection.client.set_next_response({
+    ...     "rows":[],
+    ...     "cols":[],
+    ...     "duration":123
+    ... })
+
+    >>> cursor.execute('')
+    >>> cursor.rowcount
+    -1
+
+    >>> connection.client.set_next_response({
+    ...     "rows":[ [ "North West Ripple", 1 ], [ "Arkintoofle Minor", 3 ], [ "Alpha Centauri", 3 ] ],
+    ...     "cols":[ "name", "position" ],
+    ...     "rowcount":3,
+    ...     "duration":123
+    ... })
+
 duration
 ========
 
@@ -149,27 +211,68 @@ The attribute is -1 in case close has been performed on the cursor::
     >>> cursor.duration
     -1
 
+    >>> connection.client.set_next_response({
+    ...     "results": [
+    ...         {
+    ...             "rowcount": 3
+    ...         },
+    ...         {
+    ...             "rowcount": 2
+    ...         }
+    ...     ],
+    ...     "duration":123,
+    ...     "cols":[ "name", "position" ],
+    ... })
+
 executemany
 ===========
 
-``executemany()`` allows to execute a single sql statement against a sequence
-of parameters. The resulting ``rowcount`` and ``duration`` are the sum of all
-calls made to the server during this method execution.::
+``executemany()`` allows to execute a single sql statement against a sequence of parameters::
 
     >>> cursor = connection.cursor()
 
+    >>> cursor.executemany('', (1,2,3))
+    [{'rowcount': 3}, {'rowcount': 2}]
+
+    >>> cursor.rowcount
+    5
+    >>> cursor.duration
+    123
+
+``executemany is not intended to be used with statements returning result sets. The result will alway be empty::
+
+    >>> cursor.fetchall()
+    []
+
+For completeness' sake the cursor description is updated nonetheless::
+
+    >>> [ desc[0] for desc in cursor.description ]
+    ['name', 'position']
+
+    >>> connection.client.set_next_response({
+    ...     "rows":[ [ "North West Ripple", 1 ], [ "Arkintoofle Minor", 3 ], [ "Alpha Centauri", 3 ] ],
+    ...     "cols":[ "name", "position" ],
+    ...     "rowcount":3,
+    ...     "duration":123
+    ... })
+
+Usually ``executemany`` sends the ``bulk_args`` parameter to the crate sql 
+endpoint which was introduced with crate 0.42.0.
+If the client is connected to at least one crate server with an older version
+the client executes the statement once for every parameter within the sequence.
+
+The resulting ``rowcount`` and ``duration`` are the sum of all calls made to
+the server during this method execution.::
+
+
+    >>> connection_client_mocked.set_next_server_infos("local:4200", "my crate", "0.41.9")
+    >>> connection = connect(client=connection_client_mocked)
+    >>> cursor = connection.cursor()
     >>> cursor.executemany('', (1,2,3))
     >>> cursor.rowcount
     9
     >>> cursor.duration
     369
-
-As executemany cannot keep all the possible resultrows during execution of many statements
-and executemany is not intended to be used with statements returning result sets
-the result will always be empty::
-
-    >>> cursor.fetchall()
-    []
 
 close()
 =======

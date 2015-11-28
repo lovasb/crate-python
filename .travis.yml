@@ -1,13 +1,33 @@
 language: python
 python:
-    - 2.6
-    - 2.7
-    - 3.3
-    - 3.4
+  - 2.6
+  - 2.7
+  - 3.3
+  - 3.4
+  - 3.5
+sudo:
+    false
 install:
-    - python bootstrap.py
-    - ./bin/buildout
+  - pip uninstall -y setuptools
+  - python bootstrap.py
+  - sed -ir "s/SQLAlchemy = 1.0.0/SQLAlchemy = ${SA_VERSION}/g" versions.cfg
+  - ./bin/buildout -c base.cfg
+env:
+  - SA_VERSION=0.8.2
+  - SA_VERSION=0.9.8
+  - SA_VERSION=1.0.0
+matrix:
+  exclude:
+    - python: 3.3
+      env: SA_VERSION=0.8.2
+    - python: 3.4
+      env: SA_VERSION=0.8.2
+    - python: 3.5
+      env: SA_VERSION=0.8.2
 script:
-    - ./bin/test
+  - bin/coverage run bin/test
+after_success:
+  - pip install coveralls
+  - coveralls
 notifications:
     email: false

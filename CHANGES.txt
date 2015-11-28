@@ -2,6 +2,153 @@
 Changes for crate
 =================
 
+Unreleased
+==========
+
+2015/10/21 0.13.6
+=================
+
+ - fix in crate test layer: wait for layer to completely start up node
+
+2015/10/12 0.13.5
+=================
+
+ - fix: use proper CLUSTERED clause syntax in SQLAlchemy's create table statement
+
+2015/08/12 0.13.4
+=================
+
+ - Fix urllib3 error with invalid kwargs for ``HTTPConnectionPool``
+   when ``REQUESTS_CA_BUNDLE`` is set
+
+2015/06/29 0.13.3
+=================
+
+ - Fix: allow ObjectArrays to be set to None
+
+2015/06/15 0.13.2
+=================
+
+ - wait until master of test cluster is elected before starting tests
+
+2015/05/29 0.13.1
+=================
+
+ - fixed compatibility issues with SQLAlchemy 1.0.x
+
+ - map SqlAlchemy's text column type to Crate's ``STRING`` type
+
+2015/03/10 0.13.0
+=================
+
+ - add support for table creation using the SQLAlchemy ORM functionality.
+
+ - fix: match predicate now properly handles term literal
+
+2015/02/13 0.12.5
+=================
+
+ - changed SQLAlchemy update statement generation to be compatible with crate
+   0.47.X
+
+2015/02/04 0.12.4
+=================
+
+ - added missing functionality in CrateDialect, containing:
+   default schema name, server version info,
+   check if table/schema exists, list all tables/schemas
+
+ - updated crate to version 0.46.1
+
+2014/10/27 0.12.3
+=================
+
+ - support iterator protocol on cursor
+
+2014/10/20 0.12.2
+=================
+
+ - added match predicate in sqlalchemy to support fulltext
+   search
+
+2014/10/02 0.12.1
+=================
+
+ - send application/json Accept header when requesting crate
+
+2014/09/11 0.12.0
+=================
+
+ - add new options to CrateLayer in order to build test clusters
+
+2014/09/19 0.11.2
+=================
+
+ - improved server failover
+
+2014/08/26 0.11.1
+=================
+
+ - more reliable failover mechanism
+
+2014/08/26 0.11.0
+=================
+
+ - improved server failover / retry behaviour
+
+ - use bulk_args in executemany to increase performance:
+    With crate server >= 0.42.0 executemany uses bulk_args
+    and returns a list of results.
+    With crate server < 0.42.0 executemany still issues
+    a request for every parameter and doesn't return
+    any results.
+
+ - improved docs formatting of field lists
+
+2014/07/25 0.10.7
+=================
+
+ - fix: ``cursor.executemany()`` now correctly sets the cursor description
+
+2014/07/18 0.10.6
+=================
+
+ - fix: correctly attach server error trace to crate client exceptions
+
+2014/07/16 0.10.5
+=================
+
+ - fix: only send ``error_trace`` when it is explicitly set
+
+2014/07/16 0.10.4
+=================
+
+ - expose the ``error_trace`` option to give a full traceback of server exceptions
+
+2014/07/14 0.10.3
+=================
+
+ - fix: Columns that have an onupdate definition are now correctly updated
+
+2014/06/03 0.10.2
+=================
+
+ - fix: return -1 for rowcount if rowcount attribute is missing in crate
+   response
+
+2014/05/21 0.10.1
+=================
+
+ - fixed redirect handling for blob downloads and uploads.
+
+2014/05/16 0.10.0
+=================
+
+ - implemented ANY operator on object array containment checks
+   for SQLAlchemy
+
+ - updated crate to 0.37.1
+
 2014/05/13 0.9.5
 ================
 

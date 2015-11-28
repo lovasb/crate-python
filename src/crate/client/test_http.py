@@ -22,6 +22,7 @@
 import json
 import time
 import sys
+import os
 from .compat import queue
 from random import SystemRandom
 import traceback
@@ -55,15 +56,95 @@ class FakeServerRaisingMaxRetryError(FakeServerRaisingException):
                     None, path, "this shouldn't be raised")
 
 
-class FakeServerServiceUnavailable(object):
+class FakeServerErrorResponse(object):
+
+    @property
+    def status(self):
+        raise NotImplemented
+
+    @property
+    def reason(self):
+        raise NotImplemented
+
+    content_type = "application/json"
 
     def __init__(self, *args, **kwargs):
         pass
 
     def request(self, method, path, data=None, stream=False, **kwargs):
         mock_response = MagicMock()
-        mock_response.status = 503
-        mock_response.reason = "Service Unavailable"
+        mock_response.status = self.status
+        mock_response.reason = self.reason
+        mock_response.headers = {"content-type": self.content_type}
+        return mock_response
+
+
+class FakeServerServiceUnavailable(FakeServerErrorResponse):
+
+    status = 503
+    reason = "Service Unavailable"
+
+
+class FakeServer50xResponse(FakeServerErrorResponse):
+
+    counter = 0
+    STATI = [200, 503]
+    REASONS = ["Success", "Service Unavailable"]
+
+    _status = 200
+    _reason = "Success"
+
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def reason(self):
+        return self._reason
+
+    def request(self, method, path, data=None, stream=False, **kwargs):
+        self._reason = self.REASONS[self.counter % len(self.REASONS)]
+        self._status = self.STATI[self.counter % len(self.STATI)]
+        print(self.counter, self._status)
+        self.counter += 1
+        mock_response = MagicMock()
+        mock_response.status = self._status
+        mock_response.reason = self._reason
+        mock_response.headers = {"content-type": self.content_type}
+        return mock_response
+
+class FakeServerUnauthorized(FakeServerErrorResponse):
+
+    status = 401
+    reason = "Unauthorized"
+    content_type = "text/html"
+
+
+class FakeServerBadBulkRequest(FakeServerErrorResponse):
+
+    def request(self, method, path, data=None, stream=False, **kwargs):
+        mock_response = MagicMock()
+        mock_response.status = 400
+        mock_response.reason = "Bad Request"
+        mock_response.headers = {"content-type": self.content_type}
+        mock_response.data = json.dumps({
+                        "results": [
+                            {
+                                "rowcount": 1
+                            },
+                            {
+                                "error_message": "an error occured"
+                            },
+                            {
+                                "error_message": "another error"
+                            },
+                            {
+                                "error_message": ""
+                            },
+                            {
+                                "error_message": None
+                            }
+                        ]}).encode()
         return mock_response
 
 
@@ -77,6 +158,20 @@ class FakeServerFailSometimes(object):
             raise urllib3.exceptions.MaxRetryError(None, path, '')
         else:
             return mock_response
+
+
+class FakeRedirectServer(object):
+
+    """ server that generates a response with redirect location to
+
+        http://localhost:4201
+    """
+
+    def request(self, method, path, data=None, stream=False, **kwargs):
+        resp = MagicMock()
+        resp.status = 307
+        resp.get_redirect_location.return_value = 'http://localhost:4201'
+        return resp
 
 
 class HttpClientTest(TestCase):
@@ -100,6 +195,18 @@ class HttpClientTest(TestCase):
         else:
             self.assertTrue(False)
 
+    @patch('crate.client.http.Server', FakeServer50xResponse)
+    def test_server_error_50x(self):
+        client = Client(servers="localhost:4200 localhost:4201")
+        client.sql('select 1')
+        client.sql('select 2')
+        try:
+            client.sql('select 3')
+        except ProgrammingError as e:
+            self.assertEqual("No more Servers available, exception from last server: Service Unavailable",
+                             e.message)
+        self.assertEqual([], list(client._active_servers))
+
     def test_connect(self):
         client = Client(servers="localhost:4200 localhost:4201")
         self.assertEqual(client._active_servers,
@@ -115,6 +222,19 @@ class HttpClientTest(TestCase):
         self.assertEqual(client._active_servers,
                          ["http://localhost:4200", "http://127.0.0.1:4201"])
 
+    def test_redirect_handling(self):
+        client = Client(servers='localhost:4200')
+        client.server_pool['http://localhost:4200'] = FakeRedirectServer()
+        try:
+            client.blob_get('blobs', 'fake_digest')
+        except ProgrammingError:
+            # 4201 gets added to serverpool but isn't available
+            pass
+        self.assertEqual(
+            ['http://localhost:4200', 'http://localhost:4201'],
+            sorted(list(client.server_pool.keys()))
+        )
+
     @patch('crate.client.http.Server', FakeServerRaisingMaxRetryError)
     def test_server_infos(self):
         client = Client(servers="localhost:4200 localhost:4201")
@@ -128,6 +248,26 @@ class HttpClientTest(TestCase):
         self.assertRaises(ConnectionError,
                           client.server_infos,
                           client._get_server())
+
+    @patch('crate.client.http.Server', FakeServerUnauthorized)
+    def test_server_infos_401(self):
+        client = Client(servers="localhost:4200 localhost:4201")
+        try:
+            client.server_infos(client._get_server())
+        except ProgrammingError as e:
+            self.assertEqual("401 Client Error: Unauthorized", e.message)
+        else:
+            self.assertTrue(False, msg="Exception should have been raised")
+
+    @patch('crate.client.http.Server', FakeServerBadBulkRequest)
+    def test_bad_bulk_400(self):
+        client = Client(servers="localhost:4200")
+        try:
+            client.sql("Insert into users (name) values(?)", bulk_parameters=[["douglas"], ["monthy"]])
+        except ProgrammingError as e:
+            self.assertEqual("an error occured\nanother error", e.message)
+        else:
+            self.assertTrue(False, msg="Exception should have been raised")
 
 
 class ThreadSafeHttpClientTest(TestCase):
@@ -270,3 +410,28 @@ class KeepAliveClientTest(TestCase):
 
             another_result = self.client.sql("select again from fake")
             self.assertEqual(result, another_result)
+
+
+class ParamsTest(TestCase):
+
+    def test_params(self):
+        client = Client(['127.0.0.1:4200'], error_trace=True)
+        from six.moves.urllib.parse import urlparse, parse_qs
+        parsed = urlparse(client.path)
+        params = parse_qs(parsed.query)
+        self.assertEquals(params["error_trace"], ["1"])
+
+    def test_no_params(self):
+        client = Client(['127.0.0.1:4200'])
+        self.assertEqual(client.path, "_sql")
+
+
+class RequestsCaBundleTest(TestCase):
+
+    def test_open_client(self):
+        os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
+        try:
+          client = Client('http://127.0.0.1:4200')
+          crate_cursor = crate_connection.cursor()
+        except crate.client.exceptions.ProgrammingError:
+          self.fail("HTTP not working with REQUESTS_CA_BUNDLE")

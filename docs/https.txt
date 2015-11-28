@@ -1,4 +1,3 @@
-
 .. _https_connection:
 
 ========================
@@ -7,7 +6,9 @@ HTTPS Connection support
 
 The Crate Client is able to connect via https.
 
-..note:: By default, ssl server certificates are **NOT** verified.
+.. note::
+
+    By default, ssl server certificates are **NOT** verified.
 
 To enable verification, use the keyword argument ``verify_ssl_cert``.
 If it is set to ``True``, the server certificate is validated, if set to
@@ -26,7 +27,7 @@ a self signed certificate::
 
     >>> http_client = HttpClient([crate_host])
     >>> http_client.server_infos(http_client._get_server())
-    ('https://localhost:65534', u'test')
+    ('https://localhost:65534', u'test', '0.0.0')
 
 When switching on verification and giving a wrong ``ca_cert`` an error is raised::
 
@@ -41,10 +42,10 @@ established, to Eves satisfaction.
 
     >>> non_verifying_client = HttpClient([crate_host], ca_cert=invalid_ca_cert, verify_ssl_cert=False)
     >>> non_verifying_client.server_infos(crate_host)
-    ('https://localhost:65534', u'test')
+    ('https://localhost:65534', u'test', '0.0.0')
 
 Connecting to a host whose certficate is verified::
 
     >>> verifying_valid_client = HttpClient([crate_host], ca_cert=valid_ca_cert, verify_ssl_cert=True)
     >>> verifying_valid_client.server_infos(verifying_valid_client._get_server())
-    ('https://localhost:65534', u'test')
+    ('https://localhost:65534', u'test', '0.0.0')
