@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from django.db.backends import BaseDatabaseValidation
+from django.db.backends.base.validation import BaseDatabaseValidation
 
 
 class DatabaseValidation(BaseDatabaseValidation):

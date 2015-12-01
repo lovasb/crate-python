@@ -20,7 +20,7 @@
 # software solely pursuant to the terms of the relevant commercial agreement.
 
 from .connection import connect
-from .exceptions import Error
+from .exceptions import * #NOQA
 
 # version string read from setup.py using a regex. Take care not to break the
 # regex!

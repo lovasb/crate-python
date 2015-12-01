@@ -1,44 +1,42 @@
 # -*- coding: utf-8 -*-
+import re
+from django.db.models.constants import LOOKUP_SEP
+from django.db.models.expressions import OrderBy
 
 from django.db.models.sql import compiler
+from django.db.models.sql.query import get_order_dir
+from crate.client.django.models.fields import DictField
+
+FORMAT_QMARK_REGEX = re.compile(r'(?<!%)%s')
 
 
 class SQLCompiler(compiler.SQLCompiler):
+    def convert_query(self, query):
+        return FORMAT_QMARK_REGEX.sub('?', query).replace('%%', '%')
 
-    def as_sql(self, with_limits=True, with_col_aliases=False):
-        sql, params = super(SQLCompiler, self).as_sql(with_limits=with_limits, with_col_aliases=with_col_aliases)
-        return sql.replace("%s", "?"), params
+    def as_sql(self, *args, **kwargs):
+        sql, params = super().as_sql(*args, **kwargs)
+        return self.convert_query(sql), params
 
 
 class SQLInsertCompiler(compiler.SQLInsertCompiler, SQLCompiler):
-    pass
+    def as_sql(self, *args, **kwargs):
+        return (
+            (self.convert_query(stmt), params) for stmt, params in super().as_sql(*args, **kwargs)
+        )
 
 
 class SQLDeleteCompiler(compiler.SQLDeleteCompiler, SQLCompiler):
-    def as_sql(self):
-        """
-        hack for converting djangos arguments placeholders into question marks
-        as crate-python uses dbapi option ``paramstyle=qmark`` which is not supported by
-        django
-
-        TODO: make a Pull Request for django to support this dbapi option
-        :return: tuple of (<sql-statement>, <list of params>)
-        """
-        sql, params = super(SQLDeleteCompiler, self).as_sql()
-        return sql.replace("%s", "?"), params
+    def as_sql(self, *args, **kwargs):
+        sql, params = super().as_sql(*args, **kwargs)
+        return self.convert_query(sql), params
 
 
 class SQLUpdateCompiler(compiler.SQLUpdateCompiler, SQLCompiler):
-    pass
+    def as_sql(self, *args, **kwargs):
+        sql, params = super().as_sql(*args, **kwargs)
+        return self.convert_query(sql), params
 
 
 class SQLAggregateCompiler(compiler.SQLAggregateCompiler, SQLCompiler):
-    pass
-
-
-class SQLDateCompiler(compiler.SQLDateCompiler, SQLCompiler):
-    pass
-
-
-class SQLDateTimeCompiler(compiler.SQLDateTimeCompiler, SQLCompiler):
     pass

@@ -76,7 +76,7 @@ setup(
               'zope.testing',
               'zc.customdoctests>=1.0.1'],
         sqlalchemy=['sqlalchemy>=0.8.2'],
-        django=['django>=1.6,<1.7']
+        django=['django>=1.6,<1.7', 'python-dateutil']
     ),
     install_requires=requirements,
     package_data={'': ['*.txt']},

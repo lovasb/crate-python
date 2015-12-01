@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+import datetime
 
+from dateutil.parser import parse
 from django.db.models import Field as _DjangoField
 from django.db.models import (
     BooleanField as _DjangoBooleanField,
@@ -8,7 +10,8 @@ from django.db.models import (
     IntegerField as _DjangoIntegerField,
     BigIntegerField as _DjangoBigIntegerField,
     FloatField as _DjangoFloatField,
-    IPAddressField as _DjangoIPField
+    IPAddressField as _DjangoIPField,
+    DateTimeField as DjangoDatetimeField
 )
 
 
@@ -23,6 +26,22 @@ __all__ = [
     "DoubleField",
     "IPField",
 ]
+
+
+class DateTimeField(DjangoDatetimeField):
+    def from_db_value(self, value, expression, connection, context):
+        if not value:
+            return
+        try:
+            return datetime.datetime.utcfromtimestamp(value / 1e3)
+        except TypeError:
+            pass #TODO: logging
+
+    def get_prep_value(self, value):
+        if isinstance(value, str):
+            value = parse(value)
+
+        return value.strftime('%Y-%m-%dT%H:%M:%S.%fZ') ## TODO: date to string (with and without timezone)
 
 
 class Field(_DjangoField):
