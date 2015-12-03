@@ -11,7 +11,10 @@ class DatabaseOperations(BaseDatabaseOperations):
         return None
 
     def distinct_sql(self, fields):
-        raise NotImplementedError("distinct on rows not implemented")
+        if fields:
+            return 'DISTINCT (%s),' % ', '.join(fields)
+        else:
+            return 'DISTINCT'
 
     def drop_foreignkey_sql(self):
         """not supported"""
@@ -42,3 +45,7 @@ class DatabaseOperations(BaseDatabaseOperations):
 
     def end_transaction_sql(self, success=True):
         return ''
+
+    def bulk_insert_sql(self, fields, num_values):
+        items_sql = "(%s)" % ", ".join(["%s"] * len(fields))
+        return "VALUES " + ", ".join([items_sql] * num_values)

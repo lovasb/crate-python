@@ -13,7 +13,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
 
     can_use_chunked_reads = False
     can_return_id_from_insert = False
-    has_bulk_insert = False
+    has_bulk_insert = True
     uses_savepoints = False
     can_combine_inserts_with_and_without_auto_increment_pk = False
 
@@ -92,7 +92,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     can_introspect_foreign_keys = False
 
     # Support for the DISTINCT ON clause
-    can_distinct_on_fields = False
+    can_distinct_on_fields = True
 
     # Does the backend decide to commit before SAVEPOINT statements
     # when autocommit is disabled? http://bugs.python.org/issue8145#msg109965

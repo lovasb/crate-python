@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 import re
 from django.db.models.constants import LOOKUP_SEP
-from django.db.models.expressions import OrderBy
-
 from django.db.models.sql import compiler
 from django.db.models.sql.query import get_order_dir
 from crate.client.django.models.fields import DictField
+from crate.client.django.models.expressions import CrateOrderBy
 
 FORMAT_QMARK_REGEX = re.compile(r'(?<!%)%s')
 
@@ -13,6 +12,15 @@ FORMAT_QMARK_REGEX = re.compile(r'(?<!%)%s')
 class SQLCompiler(compiler.SQLCompiler):
     def convert_query(self, query):
         return FORMAT_QMARK_REGEX.sub('?', query).replace('%%', '%')
+
+    def find_ordering_name(self, name, opts, alias=None, default_order='ASC', already_seen=None):
+        name, order = get_order_dir(name, default_order)
+        pieces = name.split(LOOKUP_SEP)
+        ## TODO: othermodel__joined_dictfield__subfield
+        if isinstance(self.query.model._meta.get_field(pieces[0]), DictField):
+            return [(CrateOrderBy(pieces, descending=True), False)]
+
+        return super().find_ordering_name(name, opts, alias, default_order, already_seen)
 
     def as_sql(self, *args, **kwargs):
         sql, params = super().as_sql(*args, **kwargs)
