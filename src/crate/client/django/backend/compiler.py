@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
+from django.core.exceptions import FieldDoesNotExist
 from django.db.models.constants import LOOKUP_SEP
 from django.db.models.sql import compiler
 from django.db.models.sql.query import get_order_dir
@@ -17,8 +18,11 @@ class SQLCompiler(compiler.SQLCompiler):
         name, order = get_order_dir(name, default_order)
         pieces = name.split(LOOKUP_SEP)
         ## TODO: othermodel__joined_dictfield__subfield
-        if isinstance(self.query.model._meta.get_field(pieces[0]), DictField):
-            return [(CrateOrderBy(pieces, descending=True), False)]
+        try:
+            if isinstance(self.query.model._meta.get_field(pieces[0]), DictField):
+                return [(CrateOrderBy(pieces, descending=True), False)]
+        except FieldDoesNotExist: ## pk field
+            pass
 
         return super().find_ordering_name(name, opts, alias, default_order, already_seen)
 

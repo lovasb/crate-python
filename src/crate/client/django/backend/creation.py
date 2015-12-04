@@ -154,9 +154,9 @@ class DatabaseCreation(BaseDatabaseCreation):
         """not supported"""
         return []
 
-    def _create_test_db(self, verbosity, autoclobber):
+    def _create_test_db(self, *args, **kwargs):
         """cannot create dbs yet"""
-        return ""
+        return 'crate'
 
     def _destroy_test_db(self, test_database_name, verbosity):
         """cannot destroy dbs yet"""

@@ -12,6 +12,7 @@ from .creation import DatabaseCreation
 from .features import DatabaseFeatures
 from .introspection import DatabaseIntrospection
 from .operations import DatabaseOperations
+from .schema import DatabaseSchemaEditor
 from .validation import DatabaseValidation
 
 
@@ -35,6 +36,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     }
 
     Database = Database
+    SchemaEditorClass = DatabaseSchemaEditor
 
     def __init__(self, *args, **kwargs):
         super(DatabaseWrapper, self).__init__(*args, **kwargs)

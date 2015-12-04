@@ -211,6 +211,8 @@ class Client(object):
             data['bulk_args'] = bulk_parameters
         logger.debug(
             'Sending request to %s with payload: %s', self.path, data)
+
+        #print(data)
         content = self._json_request('POST', self.path, data=data)
         logger.debug("JSON response for stmt(%s): %s", stmt, content)
 

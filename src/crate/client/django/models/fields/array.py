@@ -11,7 +11,7 @@ class ArrayField(Field):
         'invalid': _("'%(value)s' value must be valid array."),
     }
 
-    def __init__(self, base_field, **kwargs):
+    def __init__(self, base_field=None, **kwargs):
         self.base_field = base_field
         super(ArrayField, self).__init__(**kwargs)
 

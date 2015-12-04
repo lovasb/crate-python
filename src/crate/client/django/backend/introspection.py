@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from django.db.backends.base.introspection import BaseDatabaseIntrospection
+from django.db.backends.base.introspection import BaseDatabaseIntrospection, TableInfo
 
 
 class DatabaseIntrospection(BaseDatabaseIntrospection):
@@ -23,10 +23,13 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
         cursor.execute(
             "select table_name from information_schema.tables "
             "where schema_name='doc'".format())
+
         for table_name in cursor.fetchall():
             if isinstance(table_name, list):
                 table_name = table_name[0]
-            tables.append(table_name)
+
+            tables.append(TableInfo(table_name, 't'))
+
         return tables
 
     def sequence_list(self):

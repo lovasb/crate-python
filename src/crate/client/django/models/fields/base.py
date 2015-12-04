@@ -14,6 +14,8 @@ from django.db.models import (
     DateTimeField as DjangoDatetimeField
 )
 
+from django.db import models
+
 
 __all__ = [
     "BooleanField",
@@ -42,6 +44,14 @@ class DateTimeField(DjangoDatetimeField):
             value = parse(value)
 
         return value.strftime('%Y-%m-%dT%H:%M:%S.%fZ') ## TODO: date to string (with and without timezone)
+
+
+class AutoField(models.AutoField, models.Field):
+    def get_prep_value(self, value):
+        value = models.Field.get_prep_value(self, value)
+        if value is None:
+            return None
+        return str(value)
 
 
 class Field(_DjangoField):
