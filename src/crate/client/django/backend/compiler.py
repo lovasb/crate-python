@@ -20,11 +20,11 @@ class SQLCompiler(compiler.SQLCompiler):
         ## TODO: othermodel__joined_dictfield__subfield
         try:
             if isinstance(self.query.model._meta.get_field(pieces[0]), DictField):
-                return [(CrateOrderBy(pieces, descending=True), False)]
+                return [(CrateOrderBy(pieces, descending=order), False)]
         except FieldDoesNotExist: ## pk field
             pass
 
-        return super().find_ordering_name(name, opts, alias, default_order, already_seen)
+        return super().find_ordering_name(name, opts, alias, order, already_seen)
 
     def as_sql(self, *args, **kwargs):
         sql, params = super().as_sql(*args, **kwargs)
