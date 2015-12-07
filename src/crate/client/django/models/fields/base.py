@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
+import uuid
 
 from dateutil.parser import parse
 from django.db.models import Field as _DjangoField
@@ -40,18 +41,35 @@ class DateTimeField(DjangoDatetimeField):
             pass #TODO: logging
 
     def get_prep_value(self, value):
+        if value is None:
+            return value
+
         if isinstance(value, str):
-            value = parse(value)
+            value = parse(value) ## TODO: django common date parsing
 
         return value.strftime('%Y-%m-%dT%H:%M:%S.%fZ') ## TODO: date to string (with and without timezone)
 
 
-class AutoField(models.AutoField, models.Field):
+class AutoField(models.Field):
+    def __init__(self, *args, **kwargs):
+        kwargs['default'] = None
+        super(AutoField, self).__init__(*args, **kwargs)
+
     def get_prep_value(self, value):
         value = models.Field.get_prep_value(self, value)
         if value is None:
             return None
         return str(value)
+
+    def pre_save(self, model_instance, add):
+        """
+        Returns field's value just before saving.
+        """
+        value = getattr(model_instance, self.attname)
+        if value is None:
+            value = uuid.uuid4()
+            setattr(model_instance, self.attname, value)
+        return value
 
 
 class Field(_DjangoField):

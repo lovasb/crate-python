@@ -4,14 +4,11 @@ from django.db.backends.base.creation import BaseDatabaseCreation
 
 class DatabaseCreation(BaseDatabaseCreation):
     data_types = {
-        'AutoField':                    'integer',
-        #'BinaryField':                  'BLOB',
         'BooleanField':                 'boolean',
         'CharField':                    'string',
         'CommaSeparatedIntegerField':   'string',
-        #'DateField':                    'timestamp',
+        'DateField':                    'timestamp',
         'DateTimeField':                'timestamp',
-        #'DecimalField':                 'decimal',
         'FileField':                    'string',
         'FilePathField':                'string',
         'FloatField':                   'float',
@@ -26,7 +23,6 @@ class DatabaseCreation(BaseDatabaseCreation):
         'SlugField':                    'string',
         'SmallIntegerField':            'short',
         'TextField':                    'string',
-        #'TimeField':                    'long',
     }
 
     def sql_create_model(self, model, style, known_models=set()):
