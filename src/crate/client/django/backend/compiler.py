@@ -16,6 +16,7 @@ class SQLCompiler(compiler.SQLCompiler):
 
     def find_ordering_name(self, name, opts, alias=None, default_order='ASC', already_seen=None):
         name, order = get_order_dir(name, default_order)
+        order = order == 'DESC'
         pieces = name.split(LOOKUP_SEP)
         ## TODO: othermodel__joined_dictfield__subfield
         try:
