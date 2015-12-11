@@ -65,6 +65,16 @@ class CrateArrayCommonLookup(lookups.Lookup):
 
 
 @ArrayField.register_lookup
+class ExactLookup(CrateArrayCommonLookup, lookups.Exact):
+    operator = '='
+
+
+@ArrayField.register_lookup
+class IExactLookup(CrateArrayCommonLookup, lookups.IExact):
+    operator = '='
+
+
+@ArrayField.register_lookup
 class StartswithLookup(CrateArrayCommonLookup, lookups.StartsWith):
     operator = 'LIKE'
 
