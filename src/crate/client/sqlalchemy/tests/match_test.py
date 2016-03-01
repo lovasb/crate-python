@@ -43,8 +43,8 @@ class SqlAlchemyMatchTest(TestCase):
         self.engine = sa.create_engine('crate://')
         metadata = sa.MetaData()
         self.quotes = sa.Table('quotes', metadata,
-                                sa.Column('author', sa.String),
-                                sa.Column('quote', sa.String))
+                               sa.Column('author', sa.String),
+                               sa.Column('quote', sa.String))
         self.session, self.Character = self.set_up_character_and_session()
         self.maxDiff = None
 
@@ -66,38 +66,45 @@ class SqlAlchemyMatchTest(TestCase):
         query = self.session.query(self.Character.name) \
                     .filter(match(self.Character.name, 'Trillian'))
         self.assertSQL(
-            "SELECT characters.name AS characters_name FROM characters WHERE match(characters.name, ?)",
+            "SELECT characters.name AS characters_name FROM characters " +
+            "WHERE match(characters.name, ?)",
             query
         )
 
     def test_match_boost(self):
         query = self.session.query(self.Character.name) \
-                .filter(match({self.Character.name: 0.5}, 'Trillian'))
+            .filter(match({self.Character.name: 0.5}, 'Trillian'))
         self.assertSQL(
-            "SELECT characters.name AS characters_name FROM characters WHERE match((characters.name 0.5), ?)",
+            "SELECT characters.name AS characters_name FROM characters " +
+            "WHERE match((characters.name 0.5), ?)",
             query
         )
 
     def test_muli_match(self):
         query = self.session.query(self.Character.name) \
-                .filter(match({self.Character.name: 0.5,
-                               self.Character.info['race']: 0.9},
-                              'Trillian'))
+            .filter(match({self.Character.name: 0.5,
+                           self.Character.info['race']: 0.9},
+                          'Trillian'))
         self.assertSQL(
-            "SELECT characters.name AS characters_name FROM characters WHERE match((characters.info['race'] 0.9, characters.name 0.5), ?)",
+            "SELECT characters.name AS characters_name FROM characters " +
+            "WHERE match(" +
+            "(characters.info['race'] 0.9, characters.name 0.5), ?" +
+            ")",
             query
         )
 
     def test_match_type_options(self):
         query = self.session.query(self.Character.name) \
-                .filter(match({self.Character.name: 0.5,
-                               self.Character.info['race']: 0.9},
-                              'Trillian',
-                              match_type='phrase',
-                              options={'fuzziness': 3, 'analyzer': 'english'})
-                       )
+            .filter(match({self.Character.name: 0.5,
+                           self.Character.info['race']: 0.9},
+                          'Trillian',
+                          match_type='phrase',
+                          options={'fuzziness': 3, 'analyzer': 'english'}))
         self.assertSQL(
-            "SELECT characters.name AS characters_name FROM characters WHERE match((characters.info['race'] 0.9, characters.name 0.5), ?) using phrase with (analyzer=english, fuzziness=3)",
+            "SELECT characters.name AS characters_name FROM characters " +
+            "WHERE match(" +
+            "(characters.info['race'] 0.9, characters.name 0.5), ?" +
+            ") using phrase with (analyzer=english, fuzziness=3)",
             query
         )
 
@@ -105,21 +112,22 @@ class SqlAlchemyMatchTest(TestCase):
         query = self.session.query(self.Character.name, '_score') \
                     .filter(match(self.Character.name, 'Trillian'))
         self.assertSQL(
-            "SELECT characters.name AS characters_name, _score FROM characters WHERE match(characters.name, ?)",
+            "SELECT characters.name AS characters_name, _score " +
+            "FROM characters WHERE match(characters.name, ?)",
             query
         )
 
     def test_options_without_type(self):
-        query = self.session.query(self.Character.name) \
-                .filter(match({self.Character.name: 0.5,
-                               self.Character.info['race']: 0.9},
-                              'Trillian',
-                              options={'boost': 10.0})
-                       )
+        query = self.session.query(self.Character.name).filter(
+            match({self.Character.name: 0.5, self.Character.info['race']: 0.9},
+                  'Trillian',
+                  options={'boost': 10.0})
+        )
         err = None
         try:
             str(query)
         except ValueError as e:
             err = e
-        self.assertEquals(str(err),
-                          "missing match_type. It's not allowed to specify options without match_type")
+        msg = "missing match_type. " + \
+              "It's not allowed to specify options without match_type"
+        self.assertEquals(str(err), msg)

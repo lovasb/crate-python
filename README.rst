@@ -41,7 +41,7 @@ implementation of the Python `DB API 2.0
 
 It also includes support for `SQLAlchemy <http://www.sqlalchemy.org>`_.
 
-To get started take a look at the `documentation <https://crate.io/docs/projects/crate-python/stable/>`_.
+To get started take a look at the `documentation <https://crate.io/docs/reference/python/>`_.
 
 Installation
 ============
@@ -70,11 +70,11 @@ Help & Contact
 ==============
 
 Do you have any questions? Or suggestions? We would be very happy
-to help you. So, feel free to swing by our IRC channel #crate on Freenode_.
+to help you. So, feel free to swing by our support Channel on Slack_.
 Or for further information and official contact please
 visit `https://crate.io/ <https://crate.io/>`_.
 
-.. _Freenode: http://freenode.net
+.. _Slack: https://crate.io/docs/support/slackin/
 
 License
 =======

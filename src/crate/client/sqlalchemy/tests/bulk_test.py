@@ -20,7 +20,6 @@
 # software solely pursuant to the terms of the relevant commercial agreement.
 
 from unittest import TestCase
-from datetime import datetime
 from mock import patch, MagicMock
 
 import sqlalchemy as sa
@@ -31,12 +30,11 @@ from crate.client.cursor import Cursor
 
 
 fake_cursor = MagicMock(name='fake_cursor')
-fake_cursor.rowcount = 1
 FakeCursor = MagicMock(name='FakeCursor', spec=Cursor)
 FakeCursor.return_value = fake_cursor
 
 
-class SqlAlchemyUpdateTest(TestCase):
+class SqlAlchemyBulkTest(TestCase):
 
     def setUp(self):
         self.engine = sa.create_engine('crate://')
@@ -47,35 +45,34 @@ class SqlAlchemyUpdateTest(TestCase):
 
             name = sa.Column(sa.String, primary_key=True)
             age = sa.Column(sa.Integer)
-            ts = sa.Column(sa.DateTime, onupdate=datetime.utcnow)
 
         self.character = Character
         self.session = Session()
 
     @patch('crate.client.connection.Cursor', FakeCursor)
-    def test_onupdate_is_triggered(self):
-        char = self.character(name='Arthur')
-        self.session.add(char)
-        self.session.commit()
-        now = datetime.utcnow()
+    def test_bulk_save(self):
+        chars = [
+            self.character(name='Arthur', age=35),
+            self.character(name='Banshee', age=26),
+            self.character(name='Callisto', age=37),
+        ]
 
-        fake_cursor.fetchall.return_value = [('Arthur', None)]
-        fake_cursor.description = (
-            ('characters_name', None, None, None, None, None, None),
-            ('characters_ts', None, None, None, None, None, None),
-        )
+        fake_cursor.description = ()
+        fake_cursor.rowcount = len(chars)
+        fake_cursor.executemany.return_value = [
+            {'rowcount': 1},
+            {'rowcount': 1},
+            {'rowcount': 1},
+        ]
+        self.session.bulk_save_objects(chars)
+        (stmt, bulk_args), _kwargs = fake_cursor.executemany.call_args
 
-        char.age = 40
-        self.session.commit()
-
-        expected_stmt = ("UPDATE characters SET age = ?, "
-                         "ts = ? WHERE characters.name = ?")
-        args, kwargs = fake_cursor.execute.call_args
-        stmt = args[0]
-        args = args[1]
+        expected_stmt = "INSERT INTO characters (name, age) VALUES (?, ?)"
         self.assertEqual(expected_stmt, stmt)
-        self.assertEqual(40, args[0])
-        dt = datetime.strptime(args[1], '%Y-%m-%dT%H:%M:%S.%fZ')
-        self.assertTrue(isinstance(dt, datetime))
-        self.assertTrue(dt > now)
-        self.assertEqual('Arthur', args[2])
+
+        expected_bulk_args = (
+            ('Arthur', 35),
+            ('Banshee', 26),
+            ('Callisto', 37)
+        )
+        self.assertEqual(expected_bulk_args, bulk_args)

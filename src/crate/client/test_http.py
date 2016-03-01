@@ -24,12 +24,13 @@ import time
 import sys
 import os
 from .compat import queue
-from random import SystemRandom
+import random
 import traceback
 from unittest import TestCase
 from mock import patch, MagicMock
 from threading import Thread, Event
 from multiprocessing import Process
+import datetime as dt
 import urllib3.exceptions
 
 from .http import Client
@@ -37,141 +38,53 @@ from .exceptions import ConnectionError, ProgrammingError
 from .compat import xrange, BaseHTTPServer, to_bytes
 
 
-class FakeServerRaisingException(object):
-
-    def __init__(self, *args, **kwargs):
-        pass
+REQUEST = 'crate.client.http.Server.request'
 
 
-class FakeServerRaisingGeneralException(FakeServerRaisingException):
-
-    def request(self, method, path, data=None, stream=False, **kwargs):
-        raise Exception("this shouldn't be raised")
-
-
-class FakeServerRaisingMaxRetryError(FakeServerRaisingException):
-
-    def request(self, method, path, data=None, stream=False, **kwargs):
-        raise urllib3.exceptions.MaxRetryError(
-                    None, path, "this shouldn't be raised")
-
-
-class FakeServerErrorResponse(object):
-
-    @property
-    def status(self):
-        raise NotImplemented
-
-    @property
-    def reason(self):
-        raise NotImplemented
-
-    content_type = "application/json"
-
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def request(self, method, path, data=None, stream=False, **kwargs):
-        mock_response = MagicMock()
-        mock_response.status = self.status
-        mock_response.reason = self.reason
-        mock_response.headers = {"content-type": self.content_type}
-        return mock_response
-
-
-class FakeServerServiceUnavailable(FakeServerErrorResponse):
-
-    status = 503
-    reason = "Service Unavailable"
-
-
-class FakeServer50xResponse(FakeServerErrorResponse):
-
-    counter = 0
-    STATI = [200, 503]
-    REASONS = ["Success", "Service Unavailable"]
-
-    _status = 200
-    _reason = "Success"
-
-    @property
-    def status(self):
-        return self._status
-
-    @property
-    def reason(self):
-        return self._reason
-
-    def request(self, method, path, data=None, stream=False, **kwargs):
-        self._reason = self.REASONS[self.counter % len(self.REASONS)]
-        self._status = self.STATI[self.counter % len(self.STATI)]
-        print(self.counter, self._status)
-        self.counter += 1
-        mock_response = MagicMock()
-        mock_response.status = self._status
-        mock_response.reason = self._reason
-        mock_response.headers = {"content-type": self.content_type}
-        return mock_response
-
-class FakeServerUnauthorized(FakeServerErrorResponse):
-
-    status = 401
-    reason = "Unauthorized"
-    content_type = "text/html"
-
-
-class FakeServerBadBulkRequest(FakeServerErrorResponse):
-
-    def request(self, method, path, data=None, stream=False, **kwargs):
-        mock_response = MagicMock()
-        mock_response.status = 400
-        mock_response.reason = "Bad Request"
-        mock_response.headers = {"content-type": self.content_type}
-        mock_response.data = json.dumps({
-                        "results": [
-                            {
-                                "rowcount": 1
-                            },
-                            {
-                                "error_message": "an error occured"
-                            },
-                            {
-                                "error_message": "another error"
-                            },
-                            {
-                                "error_message": ""
-                            },
-                            {
-                                "error_message": None
-                            }
-                        ]}).encode()
-        return mock_response
-
-
-class FakeServerFailSometimes(object):
-
-    _rnd = SystemRandom(time.time())
-
-    def request(self, method, path, data=None, stream=False, **kwargs):
-        mock_response = MagicMock()
-        if int(self._rnd.random() * 100) % 10 == 0:
-            raise urllib3.exceptions.MaxRetryError(None, path, '')
+def fake_request(response=None):
+    def request(*args, **kwargs):
+        if isinstance(response, list):
+            resp = response.pop(0)
+            response.append(resp)
+            return resp
+        elif response:
+            return response
         else:
-            return mock_response
+            return MagicMock(spec=urllib3.response.HTTPResponse)
+    return request
 
 
-class FakeRedirectServer(object):
+def fake_response(status, reason=None, content_type='application/json'):
+    m = MagicMock(spec=urllib3.response.HTTPResponse)
+    m.status = status
+    m.reason = reason or ''
+    m.headers = {'content-type': content_type}
+    return m
 
-    """ server that generates a response with redirect location to
 
-        http://localhost:4201
-    """
+def fake_redirect(location):
+    m = fake_response(307)
+    m.get_redirect_location.return_value = location
+    return m
 
-    def request(self, method, path, data=None, stream=False, **kwargs):
-        resp = MagicMock()
-        resp.status = 307
-        resp.get_redirect_location.return_value = 'http://localhost:4201'
-        return resp
+
+def bad_bulk_response():
+    r = fake_response(400, 'Bad Request')
+    r.data = json.dumps({
+        "results": [
+            {"rowcount": 1},
+            {"error_message": "an error occured"},
+            {"error_message": "another error"},
+            {"error_message": ""},
+            {"error_message": None}
+        ]}).encode()
+    return r
+
+
+def fail_sometimes(*args, **kwargs):
+    if random.randint(1, 100) % 10 == 0:
+        raise urllib3.exceptions.MaxRetryError(None, '/_sql', '')
+    return fake_response(200)
 
 
 class HttpClientTest(TestCase):
@@ -180,13 +93,17 @@ class HttpClientTest(TestCase):
         client = Client()
         self.assertRaises(ConnectionError, client.sql, 'select 1')
 
-    @patch('crate.client.http.Server', FakeServerRaisingGeneralException)
-    def test_http_error_is_re_raised(self):
+    @patch(REQUEST)
+    def test_http_error_is_re_raised(self, request):
+        request.side_effect = Exception
+
         client = Client()
         self.assertRaises(ProgrammingError, client.sql, 'select 1')
 
-    @patch('crate.client.http.Server', FakeServerRaisingGeneralException)
-    def test_programming_error_contains_http_error_response_content(self):
+    @patch(REQUEST)
+    def test_programming_error_contains_http_error_response_content(self, request):
+        request.side_effect = Exception("this shouldn't be raised")
+
         client = Client()
         try:
             client.sql('select 1')
@@ -195,7 +112,8 @@ class HttpClientTest(TestCase):
         else:
             self.assertTrue(False)
 
-    @patch('crate.client.http.Server', FakeServer50xResponse)
+    @patch(REQUEST, fake_request([fake_response(200),
+                                  fake_response(503, 'Service Unavailable')]))
     def test_server_error_50x(self):
         client = Client(servers="localhost:4200 localhost:4201")
         client.sql('select 1')
@@ -203,7 +121,8 @@ class HttpClientTest(TestCase):
         try:
             client.sql('select 3')
         except ProgrammingError as e:
-            self.assertEqual("No more Servers available, exception from last server: Service Unavailable",
+            self.assertEqual("No more Servers available, " +
+                             "exception from last server: Service Unavailable",
                              e.message)
         self.assertEqual([], list(client._active_servers))
 
@@ -222,9 +141,9 @@ class HttpClientTest(TestCase):
         self.assertEqual(client._active_servers,
                          ["http://localhost:4200", "http://127.0.0.1:4201"])
 
+    @patch(REQUEST, fake_request(fake_redirect('http://localhost:4201')))
     def test_redirect_handling(self):
         client = Client(servers='localhost:4200')
-        client.server_pool['http://localhost:4200'] = FakeRedirectServer()
         try:
             client.blob_get('blobs', 'fake_digest')
         except ProgrammingError:
@@ -235,41 +154,67 @@ class HttpClientTest(TestCase):
             sorted(list(client.server_pool.keys()))
         )
 
-    @patch('crate.client.http.Server', FakeServerRaisingMaxRetryError)
-    def test_server_infos(self):
+    @patch(REQUEST)
+    def test_server_infos(self, request):
+        request.side_effect = urllib3.exceptions.MaxRetryError(
+            None, '/', "this shouldn't be raised")
         client = Client(servers="localhost:4200 localhost:4201")
-        self.assertRaises(ConnectionError,
-                          client.server_infos,
-                          client._get_server())
+        self.assertRaises(
+            ConnectionError, client.server_infos, 'http://localhost:4200')
 
-    @patch('crate.client.http.Server', FakeServerServiceUnavailable)
+    @patch(REQUEST, fake_request(fake_response(503)))
     def test_server_infos_503(self):
-        client = Client(servers="localhost:4200 localhost:4201")
-        self.assertRaises(ConnectionError,
-                          client.server_infos,
-                          client._get_server())
+        client = Client(servers="localhost:4200")
+        self.assertRaises(
+            ConnectionError, client.server_infos, 'http://localhost:4200')
 
-    @patch('crate.client.http.Server', FakeServerUnauthorized)
+    @patch(REQUEST, fake_request(
+        fake_response(401, 'Unauthorized', 'text/html')))
     def test_server_infos_401(self):
-        client = Client(servers="localhost:4200 localhost:4201")
+        client = Client(servers="localhost:4200")
         try:
-            client.server_infos(client._get_server())
+            client.server_infos('http://localhost:4200')
         except ProgrammingError as e:
             self.assertEqual("401 Client Error: Unauthorized", e.message)
         else:
             self.assertTrue(False, msg="Exception should have been raised")
 
-    @patch('crate.client.http.Server', FakeServerBadBulkRequest)
+    @patch(REQUEST, fake_request(bad_bulk_response()))
     def test_bad_bulk_400(self):
         client = Client(servers="localhost:4200")
         try:
-            client.sql("Insert into users (name) values(?)", bulk_parameters=[["douglas"], ["monthy"]])
+            client.sql("Insert into users (name) values(?)",
+                       bulk_parameters=[["douglas"], ["monthy"]])
         except ProgrammingError as e:
             self.assertEqual("an error occured\nanother error", e.message)
         else:
             self.assertTrue(False, msg="Exception should have been raised")
 
+    @patch(REQUEST, autospec=True)
+    def test_datetime_is_converted_to_ts(self, request):
+        client = Client(servers="localhost:4200")
+        request.return_value = fake_response(200)
 
+        datetime = dt.datetime(2015, 2, 28, 7, 31, 40)
+        client.sql('insert into users (dt) values (?)', (datetime,))
+
+        # convert string to dict
+        # because the order of the keys isn't deterministic
+        data = json.loads(request.call_args[1]['data'])
+        self.assertEqual(data['args'], [1425108700000])
+
+    @patch(REQUEST, autospec=True)
+    def test_date_is_converted_to_ts(self, request):
+        client = Client(servers="localhost:4200")
+        request.return_value = fake_response(200)
+
+        day = dt.date(2016, 4, 21)
+        client.sql('insert into users (dt) values (?)', (day,))
+        data = json.loads(request.call_args[1]['data'])
+        self.assertEqual(data['args'], [1461196800000])
+
+
+@patch(REQUEST, fail_sometimes)
 class ThreadSafeHttpClientTest(TestCase):
     """
     Using a pool of 5 Threads to emit commands to the multiple servers through
@@ -293,27 +238,26 @@ class ThreadSafeHttpClientTest(TestCase):
         super(ThreadSafeHttpClientTest, self).__init__(*args, **kwargs)
 
     def setUp(self):
-        super(ThreadSafeHttpClientTest, self).setUp()
         self.client = Client(self.servers)
         self.client.retry_interval = 0.0001  # faster retry
-        for server in list(self.client.server_pool.keys()):
-            self.client.server_pool[server] = FakeServerFailSometimes()
 
     def _run(self):
         self.event.wait()  # wait for the others
         expected_num_servers = len(self.servers)
         for x in xrange(self.num_commands):
             try:
-                self.client._request('GET', "/")
-            except (ConnectionError, ProgrammingError):
+                self.client.sql('select name from sys.cluster')
+            except ConnectionError:
                 pass
             try:
                 with self.client._lock:
-                    num_servers = len(self.client._active_servers) + len(self.client._inactive_servers)
+                    num_servers = len(self.client._active_servers) + \
+                        len(self.client._inactive_servers)
                 self.assertEquals(
                     expected_num_servers,
                     num_servers,
-                    "expected %d but got %d" % (expected_num_servers, num_servers)
+                    "expected %d but got %d" % (expected_num_servers,
+                                                num_servers)
                 )
             except AssertionError:
                 self.err_queue.put(sys.exc_info())
@@ -327,30 +271,20 @@ class ThreadSafeHttpClientTest(TestCase):
         client is indeed thread-safe in all cases, it can only show that it
         withstands this scenario.
         """
-        pool = [
+        threads = [
             Thread(target=self._run, name=str(x))
             for x in xrange(self.num_threads)
         ]
-        for thread in pool:
+        for thread in threads:
             thread.start()
 
         self.event.set()
-        while True:
-            try:
-                thread = pool.pop()
-                thread.join(self.thread_timeout)
-            except IndexError:
-                break
+        for t in threads:
+            t.join(self.thread_timeout)
 
         if not self.err_queue.empty():
-            self.assertTrue(
-                False,
-                "".join(
-                    traceback.format_exception(
-                        *self.err_queue.get(block=False)
-                    )
-                )
-            )
+            self.assertTrue(False, "".join(
+                traceback.format_exception(*self.err_queue.get(block=False))))
 
 
 class ClientAddressRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -401,7 +335,8 @@ class KeepAliveClientTest(TestCase):
         super(KeepAliveClientTest, self).tearDown()
 
     def _run_server(self):
-        self.server = BaseHTTPServer.HTTPServer(self.server_address, ClientAddressRequestHandler)
+        self.server = BaseHTTPServer.HTTPServer(self.server_address,
+                                                ClientAddressRequestHandler)
         self.server.handle_request()
 
     def test_client_keepalive(self):
@@ -423,7 +358,7 @@ class ParamsTest(TestCase):
 
     def test_no_params(self):
         client = Client(['127.0.0.1:4200'])
-        self.assertEqual(client.path, "_sql")
+        self.assertEqual(client.path, "/_sql")
 
 
 class RequestsCaBundleTest(TestCase):
@@ -431,7 +366,6 @@ class RequestsCaBundleTest(TestCase):
     def test_open_client(self):
         os.environ["REQUESTS_CA_BUNDLE"] = "/etc/ssl/certs/ca-certificates.crt"
         try:
-          client = Client('http://127.0.0.1:4200')
-          crate_cursor = crate_connection.cursor()
-        except crate.client.exceptions.ProgrammingError:
-          self.fail("HTTP not working with REQUESTS_CA_BUNDLE")
+            Client('http://127.0.0.1:4200')
+        except ProgrammingError:
+            self.fail("HTTP not working with REQUESTS_CA_BUNDLE")

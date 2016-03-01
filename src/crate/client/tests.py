@@ -29,7 +29,7 @@ import re
 
 from pprint import pprint
 from datetime import datetime, date
-from six.moves import BaseHTTPServer
+from six.moves.BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 import ssl
 import time
 import threading
@@ -45,7 +45,12 @@ from crate.client.sqlalchemy.dialect import CrateDialect
 from . import http
 from .test_cursor import CursorTest
 from .test_connection import ConnectionTest
-from .test_http import HttpClientTest, ThreadSafeHttpClientTest, KeepAliveClientTest, ParamsTest
+from .test_http import (
+    HttpClientTest,
+    ThreadSafeHttpClientTest,
+    KeepAliveClientTest,
+    ParamsTest,
+)
 from .sqlalchemy.tests import test_suite as sqlalchemy_test_suite
 from .sqlalchemy.types import ObjectArray
 from .compat import cprint
@@ -124,7 +129,8 @@ def setUpWithCrateLayer(test):
     refresh("locations")
 
     # create blob table
-    cursor.execute("create blob table myfiles clustered into 1 shards with (number_of_replicas=0)")
+    cursor.execute("create blob table myfiles clustered into 1 shards " +
+                   "with (number_of_replicas=0)")
 
 
 def setUpCrateLayerAndSqlAlchemy(test):
@@ -177,21 +183,22 @@ _server = None
 class HttpsTestServerLayer(object):
     PORT = 65534
     HOST = "localhost"
-    CERT_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "test_https.pem"))
+    CERT_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                "test_https.pem"))
 
     __name__ = "httpsserver"
     __bases__ = tuple()
 
-    class HttpsServer(BaseHTTPServer.HTTPServer):
+    class HttpsServer(HTTPServer):
         def get_request(self):
-            socket, client_address = BaseHTTPServer.HTTPServer.get_request(self)
+            socket, client_address = HTTPServer.get_request(self)
             socket = ssl.wrap_socket(socket,
                                      keyfile=HttpsTestServerLayer.CERT_FILE,
                                      certfile=HttpsTestServerLayer.CERT_FILE,
                                      server_side=True)
             return socket, client_address
 
-    class HttpsHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    class HttpsHandler(BaseHTTPRequestHandler):
 
         payload = json.dumps({"name": "test", "status": 200, })
 
@@ -226,9 +233,15 @@ class HttpsTestServerLayer(object):
 
 def setUpWithHttps(test):
     test.globs['HttpClient'] = http.Client
-    test.globs['crate_host'] = "https://{0}:{1}".format(HttpsTestServerLayer.HOST, HttpsTestServerLayer.PORT)
-    test.globs['invalid_ca_cert'] = os.path.abspath(os.path.join(os.path.dirname(__file__), "invalid_ca.pem"))
-    test.globs['valid_ca_cert'] = os.path.abspath(os.path.join(os.path.dirname(__file__), "test_https_ca.pem"))
+    test.globs['crate_host'] = "https://{0}:{1}".format(
+        HttpsTestServerLayer.HOST, HttpsTestServerLayer.PORT
+    )
+    test.globs['invalid_ca_cert'] = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "invalid_ca.pem")
+    )
+    test.globs['valid_ca_cert'] = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "test_https_ca.pem")
+    )
     test.globs['pprint'] = pprint
     test.globs['print'] = cprint
 
@@ -270,7 +283,8 @@ def test_suite():
         'connection.txt',
         checker=checker,
         setUp=setUpMocked,
-        optionflags=flags
+        optionflags=flags,
+        encoding='utf-8'
     )
     suite.addTest(s)
     suite.addTest(unittest.makeSuite(CursorTest))
@@ -287,7 +301,8 @@ def test_suite():
         '../../../docs/https.txt',
         checker=checker,
         setUp=setUpWithHttps,
-        optionflags=flags
+        optionflags=flags,
+        encoding='utf-8'
     )
     s.layer = HttpsTestServerLayer()
     suite.addTest(s)
@@ -298,7 +313,8 @@ def test_suite():
         checker=checker,
         setUp=setUpCrateLayerAndSqlAlchemy,
         tearDown=tearDownWithCrateLayer,
-        optionflags=flags
+        optionflags=flags,
+        encoding='utf-8'
     )
     s.layer = crate_layer
     suite.addTest(s)
@@ -312,7 +328,8 @@ def test_suite():
         checker=checker,
         setUp=setUpWithCrateLayer,
         tearDown=tearDownWithCrateLayer,
-        optionflags=flags
+        optionflags=flags,
+        encoding='utf-8'
     )
     s.layer = crate_layer
     suite.addTest(s)
@@ -322,7 +339,8 @@ def test_suite():
         checker=checker,
         setUp=setUpCrateLayerAndSqlAlchemy,
         tearDown=tearDownWithCrateLayer,
-        optionflags=flags
+        optionflags=flags,
+        encoding='utf-8'
     )
     s.layer = crate_layer
     suite.addTest(s)
